@@ -243,6 +243,47 @@ For each experiment: write `notebooks/04*_exp0*_*.ipynb`, run on full **12,723**
 
 ---
 
+## 10.5 · Phase 10 — Demo UI (**optional, parallel track**)
+
+> **Status:** optional. Cached-mode only — the UI reads from `results/exp_*/` artifacts, never makes a live LLM call. Four tabs: **Architecture Battle · Explainability · Confidence & Safety · Results Dashboard**. Build only if time permits — the thesis defends without it.
+
+> **Why optional matters:** if at the end of Phase 9 the experiment results are weak or incomplete, **drop the UI** and put that time into the thesis writeup. Plan.md §15 lists this as a top risk.
+
+### Stage A — Scaffolding (~2 days · do right after Phase 3)
+
+- [ ] Create `app/main.py` — Streamlit entry point with tab router
+- [ ] Create `app/tabs/{battle, explainability, confidence, dashboard}.py` — empty stubs that render placeholders
+- [ ] Create `app/utils.py` — cached-data loader functions with mock-data fallback
+- [ ] Create `app/_mock_data.py` — placeholder data built from the legacy 65-row golden so the UI renders
+- [ ] Create `streamlit_app.py` at repo root (Streamlit Cloud entry point) → imports `app/main.py`
+- [ ] **Lock `summary.json` schema** in `docs/results_schema.md` — every experiment writes to this exact shape
+- [ ] Add a CI-style assert in `src/eval/runner.py` that the produced `summary.json` matches the schema
+- [ ] `pip install streamlit` + add to `requirements.txt`
+- **Acceptance:** `.venv/bin/streamlit run app/main.py` opens a browser, all 4 tabs render with mock data, no errors. `docs/results_schema.md` exists and the runner asserts against it.
+
+### Stage B — Incremental wire-up (~0 extra days · parallel to Phases 4–9)
+
+- [ ] After EXP_01 done → wire **Tab 1** to read `results/exp_01_base_llm/predictions.jsonl`
+- [ ] After EXP_02–EXP_05 done → Tab 1 shows the 4-RAG side-by-side comparison
+- [ ] After EXP_07 (Adaptive) done → Tab 1 gets a 5th pane
+- [ ] After EXP_10–EXP_12 done → Tab 2 (Explainability) reads real LIME/SHAP outputs
+- [ ] After EXP_08–EXP_09 done → Tab 3 (Confidence & Safety) reads real signal/threshold data
+- [ ] After EXP_16 done → Tab 4 (Dashboard) reads all `results/exp_*/summary.json`
+- **Acceptance:** mock data is gone; every tab shows real experiment outputs; `app/_mock_data.py` deleted.
+
+### Stage C — Polish & demo prep (~3 days · after Phase 9)
+
+- [ ] Styling pass — consistent colour palette, readable fonts, no Streamlit dev warnings
+- [ ] Add help / about pages explaining each tab
+- [ ] Capture ≥6 screenshots for the thesis report (results chapter)
+- [ ] Deploy to **Streamlit Cloud free tier** (one-click GitHub integration)
+- [ ] Verify the deployed app on a phone browser
+- [ ] Record a 3-minute screencast walking through the 4 tabs
+- [ ] Add the Streamlit Cloud URL + screencast link to the thesis report
+- **Acceptance:** public URL accessible; screencast at `docs/demo.mp4` (or linked from a static host); thesis results chapter contains the screenshots.
+
+---
+
 ## 11 · Excel workbook — paste-the-results pass
 
 When all 16 experiments are done:
@@ -288,6 +329,7 @@ When all 16 experiments are done:
 | 2026-05-03 | **MedEmbed-large as ablation embedder** | plan.md §0 #2a | Defends against "general embedder on medical data" methodology hole |
 | 2026-05-03 | **GPT-4o (full) for golden constructor** | plan.md §0 #10 | 3-pass JSON-strict reliability |
 | 2026-05-03 | **Claude 3.5 Sonnet as RAGAS judge** | plan.md §0 #11 | Different family from generator + constructor |
+| 2026-05-03 | **Phase 10 — Demo UI accepted as optional parallel track** | plan.md §12 (Phase 10) | Cached-only mode, 4 tabs, Streamlit. Build only if time permits; drop if experiments slip. Schema-lock in Stage A protects against rework. |
 
 ---
 

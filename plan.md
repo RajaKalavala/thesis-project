@@ -59,6 +59,11 @@ You will run **16 experiments** in 5 groups. All 16 share infrastructure: same c
                               │
                               ▼
                      12 results tables → thesis chapters
+
+  Phase 10 ─── Streamlit demo UI (OPTIONAL, parallel track)
+              Stage A scaffolding (after Phase 3)  →
+              Stage B wire-up (during Phases 4-9)  →
+              Stage C polish + deploy (after Phase 9)
 ```
 
 ---
@@ -404,7 +409,65 @@ Rank. Map ranks → deployment recommendation:
 
 ---
 
-## 12. The 12 results tables — coverage checklist
+## 12. Phase 10 — Demo UI (**optional, parallel track**)
+
+> **Status:** optional. Marked here so it has a real slot, not a vague *"I'll get to it."* Build only if time permits — the thesis defends without it; with it, the central claim becomes *visible* in 5 seconds during the viva.
+
+**Scope guardrails.** This is a **research-presentation tool**, not a clinical deployment. The proposal §6 explicitly excludes *"Real-time clinical deployment, patient-facing testing"* — the demo UI is neither. Document it in the methodology section as: *"A Streamlit demonstration application was developed to enable interactive examination of retrieval and generation behaviour across architectures. The application reads cached experiment outputs and is a research artefact, not intended for clinical use; all answers display the system's confidence score and a safety-rejection indicator."*
+
+**Mode.** **Cached-only** — the UI reads from `results/exp_*/predictions.jsonl` and `retrieval.jsonl`, never makes a live LLM call. No Groq/OpenAI/Anthropic dependency at demo time, no demo-day failures, fully offline-capable. (Live mode — paste a new question → real Groq call — may be added at the end of the project as a stretch goal.)
+
+### 12.1 Stack
+
+- **Streamlit** (Python-native, lives in the same `.venv`, runs on M1 Pro fine)
+- One file per tab in `app/` directory
+- Shared utilities in `app/utils.py` (cached-data loaders, plot helpers)
+- Deploy to **Streamlit Cloud free tier** for the viva (one-click GitHub deploy)
+
+### 12.2 The four tabs
+
+| # | Tab | Reads from | Shows |
+|---|---|---|---|
+| 1 | **Architecture Battle** *(crown jewel)* | `results/exp_0[2-5]/predictions.jsonl` + `retrieval.jsonl` | Pick a MedQA question → 4 panes side-by-side (Naive / Sparse / Hybrid / Multi-Hop) → each pane: retrieved chunks (collapsible snippets), generated answer, predicted option, ground-truth match badge, RAGAS Faithfulness, latency. Optional 5th pane for Adaptive RAG once EXP_07 is done. |
+| 2 | **Explainability View** | `results/exp_10/lime.jsonl` + `results/exp_11/shap.jsonl` + `results/exp_12/agreement.parquet` | Pick any answered question + architecture → show LIME and SHAP rankings of which retrieved passages drove the answer, with the relevant text highlighted. Show LIME-SHAP top-1 / top-3 agreement. |
+| 3 | **Confidence & Safety** | `results/exp_08/confidence_features.parquet` + `results/exp_09/threshold_sweep.csv` | Slider for the rejection threshold (0.5–0.9) → live update of accept rate, accuracy, hallucination rate. Sample list of rejected questions with the signal that triggered the reject. |
+| 4 | **Results Dashboard** | All `results/exp_*/summary.json` | Interactive versions of the 12 + 1 Excel tables — filter by `complexity`, `question_type`, `requires_multihop`, embedder. Drill down into any cell to see the underlying questions. |
+
+### 12.3 Three-stage build
+
+| Stage | When | Effort | Deliverable | Acceptance |
+|---|---|---|---|---|
+| **A — Scaffolding** | After Phase 3 (golden dataset done), before Phase 4 baseline runs | ~2 days | Empty Streamlit app at `app/main.py` with all 4 tabs. **Hardcoded placeholder data** in `app/_mock_data.py` (built from the legacy 65-row golden as a stand-in). The output schema for `results/exp_*/summary.json` is **frozen** during this stage — see Stage A acceptance below. | The app runs (`streamlit run app/main.py`) and displays mock content in all 4 tabs without errors. The output-schema spec is documented in `docs/results_schema.md`. **Critically: this freezes `summary.json` shape *before* you spend 30+ hours of Groq running experiments.** |
+| **B — Incremental wire-up** | Continuous, parallel to Phases 4–9 | ~0 extra days | As each experiment writes to `results/exp_XX/`, swap the corresponding mock loader in `app/utils.py` for the real loader. No per-experiment UI work if Stage A's schema is right. | The app's tab N stops showing mock data and shows the real experiment's data after that experiment completes. |
+| **C — Polish & demo prep** | After Phase 9 (all experiments done), before thesis writing crunch | ~3 days | Styling pass (consistent fonts, colour palette, no dev-mode warnings); screenshots for the thesis report (PNG export); deploy to Streamlit Cloud; record a 3-minute demo screencast. | Public Streamlit Cloud URL works on a phone browser; ≥6 screenshots embedded into the thesis results chapter; screencast saved to `docs/demo.mp4` (or linked from a static host). |
+
+### 12.4 Repository additions
+
+```
+thesis-project/
+├── app/                                ← NEW (only if Phase 10 is taken on)
+│   ├── main.py                         (Streamlit entry point with tab router)
+│   ├── tabs/
+│   │   ├── battle.py                   (Tab 1 — Architecture Battle)
+│   │   ├── explainability.py           (Tab 2 — LIME / SHAP view)
+│   │   ├── confidence.py               (Tab 3 — Threshold slider)
+│   │   └── dashboard.py                (Tab 4 — Results tables)
+│   ├── utils.py                        (cached-data loaders, plot helpers)
+│   ├── _mock_data.py                   (Stage A placeholder, deleted after Stage B)
+│   └── assets/
+│       └── style.css                   (optional Stage C polish)
+├── docs/
+│   └── results_schema.md               ← NEW (locks summary.json shape)
+└── streamlit_app.py                    ← NEW (Streamlit Cloud entry point, imports app/main.py)
+```
+
+### 12.5 Hardware impact
+
+Negligible. Streamlit runs on M1 Pro CPU only — no GPU, no embedding model in memory at demo time. Memory footprint at runtime is ~300–500 MB. Streamlit Cloud free tier is plenty for a viva demo (no concurrent-user pressure).
+
+---
+
+## 13. The 12 results tables — coverage checklist
 
 | Table | Title | Filled by | Notebook |
 |---|---|---|---|
@@ -421,11 +484,11 @@ Rank. Map ranks → deployment recommendation:
 | 11 | Confidence Threshold Tuning | EXP_08–EXP_09 | `07_exp09` |
 | 12 | Final Weighted Ranking | EXP_16 | `09_exp16` |
 
-If every experiment writes its `summary.json` with **exactly the column names from the Excel workbook**, populating the workbook is a paste step at the end.
+If every experiment writes its `summary.json` with **exactly the column names from the Excel workbook**, populating the workbook is a paste step at the end. The same `summary.json` schema also feeds the demo UI's Tab 4 (§12.2) — locking the schema in Stage A of Phase 10 saves rework.
 
 ---
 
-## 13. Cost & runtime budget
+## 14. Cost & runtime budget
 
 | Phase | Compute | API cost |
 |---|---|---|
@@ -439,39 +502,46 @@ If every experiment writes its `summary.json` with **exactly the column names fr
 | Phase 7 (confidence) | <1 h compute (re-uses prior outputs) | $0 |
 | Phase 8 (taxonomy) | 3 h human + 30 min compute | ~$3 GPT-4o-mini if classifier-assisted |
 | Phase 9 (synthesis) | 30 min | $0 |
-| **Total** | **~4–5 weeks elapsed** | **~$95–125** |
+| **Phase 10 (demo UI, optional)** | ~5 days human time, spread A/B/C | $0 (Streamlit Cloud free tier) |
+| **Total** | **~4–5 weeks elapsed (+ ~5 days if Phase 10 taken)** | **~$95–125** |
 
 The dominant cost is **wall-clock**, not money. Disk-cache every Groq + Claude + GPT-4o response by `(experiment_id, question_id, prompt_hash)` so resuming after a rate-limit pause is free.
 
-**API key inventory:** `GROQ_API_KEY` (LLaMA generation), `OPENAI_API_KEY` (GPT-4o constructor + optional GPT-4o-mini taxonomy classifier), `ANTHROPIC_API_KEY` (Claude 3.5 Sonnet RAGAS judge).
+**API key inventory:** `GROQ_API_KEY` (LLaMA generation), `OPENAI_API_KEY` (GPT-4o constructor + optional GPT-4o-mini taxonomy classifier), `ANTHROPIC_API_KEY` (Claude 3.5 Sonnet RAGAS judge). Demo UI in cached mode needs **none** of these keys.
 
 ---
 
-## 14. Risk register
+## 15. Risk register
 
 | Risk | Probability | Mitigation |
 |---|---|---|
 | Groq rate limits stall a long run | High | Disk-cache every response; resumable runners; back off + retry on 429s. |
 | Golden-set construction labels `requires_multihop = yes` too aggressively (legacy 77%) | Medium | In Pass 2 prompt, define multi-hop as *"requires combining ≥2 distinct facts from ≥2 distinct passages"*. Spot-check 30 rows. |
 | BGE-large index doesn't fit in 16 GB | Low | 32k × 1024 × 4 bytes = 131 MB. Plenty of headroom. ChromaDB on disk. |
-| Same-LLM-family bias (LLaMA generates, LLaMA judges) | High if not mitigated | RAGAS judge = `gpt-4o-mini`. Different family. |
+| Same-LLM-family bias (LLaMA generates, LLaMA judges) | High if not mitigated | RAGAS judge = **`claude-3-5-sonnet`** (different family from both generator and constructor). |
 | Multi-Hop RAG loops indefinitely | Medium | Hard cap 3 hops, hard cap tokens/hop, stop early if no new chunks retrieved. |
 | LIME/SHAP perturbation cost explodes | Medium | Sample 200 Q/arch (documented in methodology). |
 | Manual hallucination labels are subjective | Medium | Have a second annotator label 30 cases; report inter-annotator agreement (Cohen's κ). |
 | Dataset contamination — LLaMA already saw MedQA in pretraining | Medium-High | Compare EXP_01 No-RAG accuracy vs EXP_02 Naive RAG; if No-RAG is already > 75%, hallucination is the more interesting story than accuracy. |
 | Index disagrees between sessions (different embedding model versions) | Low | Pin `sentence-transformers==3.0.x` and BGE model revision in requirements.txt. |
+| **(Phase 10) Demo UI schema drift** — `summary.json` shape changes mid-project, breaks the UI | Medium | Lock the schema in Stage A; document in `docs/results_schema.md`; CI-style assert in `src/eval/runner.py` that every produced `summary.json` matches the schema. |
+| **(Phase 10) UI consumes time better spent on experiments** | Medium-High | Phase 10 is **optional**. If at the end of Phase 9 the experiment results are weak or incomplete, drop the UI entirely and write up the thesis without it. |
 
 ---
 
-## 15. Sequenced next moves
+## 16. Sequenced next moves
 
 You're at the end of Phase 1. Phase 2 unblocks everything else.
 
-1. **Now → next session:** build Notebook 01 (chunking) and Notebook 02 (BGE embeddings + ChromaDB + BM25). 1 day of work end-to-end including the smoke test in Notebook 03.
+1. **Now → next session:** build Notebook 01 (chunking) and Notebook 02 (BGE + MedEmbed embeddings + 2× ChromaDB + BM25). 1 day of work end-to-end including the smoke test in Notebook 03.
 2. **Following session:** build the `src/` skeleton modules (`retrieval/`, `generation/`, `eval/runner.py`).
-3. **Then:** Notebook 04 — golden RAGAS dataset construction. Add `OPENAI_API_KEY` to `.env` first.
-4. **Then:** Phase 4 — run EXP_01 → EXP_05 sequentially. Tables 1, 8, 9 fill from these.
-5. **Then:** Phase 5 → 6 → 7 → 8 → 9 in order. Each one consumes outputs of the prior.
-6. **Final:** thesis writing — methodology + results + discussion chapters. Most of the methodology lifts directly from this `plan.md`, the dataset README, and the Excel workbook.
+3. **Then:** Notebook 04 — golden RAGAS dataset construction (50-row pilot first, then full 1,000). Add `OPENAI_API_KEY` to `.env` first.
+4. **(Optional) Right after Phase 3:** Phase 10 Stage A — Streamlit scaffolding with mock data. **The key reason to do Stage A here**: it forces you to lock `summary.json` shape before any expensive experiment runs, saving rework later.
+5. **Then:** Phase 4 — run EXP_01 → EXP_05 sequentially. Tables 1, 8, 9 fill from these. (UI Stage B wires up incrementally as outputs arrive.)
+6. **Then:** Phase 5 → 6 → 7 → 8 → 9 in order. Each one consumes outputs of the prior.
+7. **(Optional) After Phase 9:** Phase 10 Stage C — UI polish, screenshots, Streamlit Cloud deploy.
+8. **Final:** thesis writing — methodology + results + discussion chapters. Most of the methodology lifts directly from this `plan.md`, the dataset README, and the Excel workbook.
 
 If anything in the locked decisions (§0) blocks progress, surface it before sinking time into a long Groq run — the cost of pausing and re-deciding is one hour; the cost of running 30 hours on a wrong setting is 30 hours.
+
+If the demo UI starts eating time that should go into experiments, drop it. The thesis defends without it; it does NOT defend without complete experimental results.
