@@ -26,7 +26,7 @@
 - [x] `data/processed/medqa_4opt.parquet` — 12,723 rows + metamap_phrases
 - [x] `data/processed/textbook_stats.parquet` — 18 books
 - [x] `data/processed/eda_summary.json` — headline numbers
-- [x] [docs/dataset/README.md](dataset/README.md) — field-level reference
+- [x] [docs/dataset.md](dataset.md) — field-level reference
 
 ---
 
@@ -303,7 +303,7 @@ When all 16 experiments are done:
 
 ## 12 · Thesis writing
 
-- [ ] Methodology chapter — lift from `plan.md`, `docs/THESIS_UNDERSTANDING.md`, `docs/dataset/README.md`, golden-data methodology
+- [ ] Methodology chapter — lift from `plan.md`, `docs/thesis_understanding.md`, `docs/dataset.md`, `docs/tech_stack.md`
 - [ ] Results chapter — driven by the 12 results tables, with per-stratum breakdowns (`meta_info`, `question_type`, `requires_multihop`)
 - [ ] Discussion — what each architecture's failure mode means, the LIME/SHAP agreement story, the hallucination taxonomy as a contribution
 - [ ] Limitations — corpus bias (Harrison's 25%), single-LLM, English-only, 18-textbook KB

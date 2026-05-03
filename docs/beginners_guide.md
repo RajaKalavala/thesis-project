@@ -2,7 +2,7 @@
 
 > **Purpose.** Read this before any other doc when you need to remember **what the thesis is actually doing and why**. No jargon-first explanations. Lots of analogies. Lots of examples.
 >
-> Companions for when you're ready to dive in: [plan.md](../plan.md) (decisions + sequence) · [todo.md](todo.md) (working checklist) · [architecture.md](architecture.md) (how the code is organised) · [dataset/README.md](dataset/README.md) (the data)
+> Companions for when you're ready to dive in: [plan.md](../plan.md) (decisions + sequence) · [todo.md](todo.md) (working checklist) · [architecture.md](architecture.md) (how the code is organised) · [dataset.md](dataset.md) (the data) · [tech_stack.md](tech_stack.md) (every tool & why)
 
 ---
 
@@ -263,7 +263,7 @@ This is **Table 12** — the crown of the thesis.
 ### Step 8 — Thesis writing + (optional) demo UI
 
 The thesis chapters lift directly from these documents:
-- **Methodology chapter** ← `plan.md` + `architecture.md` + `dataset/README.md`
+- **Methodology chapter** ← `plan.md` + `architecture.md` + `dataset.md` + `tech_stack.md`
 - **Results chapter** ← the 12 + 1 results tables you've populated
 - **Discussion** ← what each architecture's failure pattern means + LIME/SHAP findings + the hallucination taxonomy
 - **Conclusion** ← one paragraph per use case from Table 12
@@ -408,4 +408,4 @@ At every step: **smoke test, verify, then scale.**
 
 ---
 
-*This guide is for people new to ML/RAG. When you're ready for the technical depth, see `plan.md` (decisions), `architecture.md` (code), `dataset/README.md` (data), `THESIS_UNDERSTANDING.md` (proposal mapping). When you forget the big picture, come back here.*
+*This guide is for people new to ML/RAG. When you're ready for the technical depth, see `plan.md` (decisions), `architecture.md` (code), `dataset.md` (data), `tech_stack.md` (tools & rationale), `thesis_understanding.md` (proposal mapping). When you forget the big picture, come back here.*

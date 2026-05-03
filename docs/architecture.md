@@ -2,7 +2,7 @@
 
 > **Purpose.** How this project is structured, how to *develop* it day-to-day, and which work runs on the **M1 Pro / 16 GB MacBook** vs. **Google Colab**.
 >
-> Companions: [plan.md](../plan.md) · [todo.md](todo.md) · [THESIS_UNDERSTANDING.md](THESIS_UNDERSTANDING.md) · [dataset/README.md](dataset/README.md)
+> Companions: [plan.md](../plan.md) · [todo.md](todo.md) · [thesis_understanding.md](thesis_understanding.md) · [dataset.md](dataset.md) · [tech_stack.md](tech_stack.md)
 
 ---
 
@@ -15,7 +15,7 @@ Five rules. Everything else follows from these.
 | 1 | **Build infrastructure once, reuse it 16 times** | One chunked corpus, one set of indices, one LLM client, one evaluator — all 16 experiments are thin orchestration on top |
 | 2 | **Notebooks orchestrate; `src/` does the work** | Code that's used twice belongs in `src/`. Notebooks are reproducible recipes, not where the algorithm lives |
 | 3 | **Cache every API call to disk** | Resuming a stopped run is free. Re-running an experiment after a bug fix doesn't re-bill OpenAI/Anthropic |
-| 4 | **One source of truth for each fact** | Locked decisions live in [plan.md §0](../plan.md#0-locked-decisions). Data shapes live in [dataset/README.md](dataset/README.md). Working state lives in [todo.md](todo.md). Code follows |
+| 4 | **One source of truth for each fact** | Locked decisions live in [plan.md §0](../plan.md#0-locked-decisions). Tech stack rationale in [tech_stack.md](tech_stack.md). Data shapes in [dataset.md](dataset.md). Working state in [todo.md](todo.md). Code follows. |
 | 5 | **Idempotent pipelines** | Re-running notebook 02 with no changes should be a near-no-op (cached embeddings, cached indices). New chunk size? Bump a version flag, regenerate, everything downstream invalidates cleanly |
 
 ---

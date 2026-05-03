@@ -125,9 +125,13 @@ thesis-project/
 │   ├── base.yaml                      (model, chunking, top-k, prompt template path)
 │   └── exp_XX.yaml                    (per-experiment overrides)
 ├── docs/
-│   ├── THESIS_UNDERSTANDING.md        ✓
-│   ├── dataset/README.md              ✓
-│   ├── golden-data/                   (legacy reference, do not consume)
+│   ├── README.md                      ✓ (docs index)
+│   ├── beginners_guide.md             ✓
+│   ├── thesis_understanding.md        ✓
+│   ├── tech_stack.md                  ✓
+│   ├── dataset.md                     ✓
+│   ├── architecture.md                ✓
+│   ├── todo.md                        ✓
 │   └── thesis-files/                  (proposal PDF + experiment workbook)
 ├── plan.md                            ← this file
 ├── requirements.txt                   ✓
@@ -145,7 +149,7 @@ thesis-project/
 - `data/processed/medqa_4opt.parquet` — 12,723 rows + metamap_phrases (use this everywhere downstream)
 - `data/processed/textbook_stats.parquet` — 18 rows
 - `data/processed/eda_summary.json` — headline numbers
-- [docs/dataset/README.md](docs/dataset/README.md) — field-level reference for the data
+- [docs/dataset.md](docs/dataset.md) — field-level reference for the data
 
 **Headline numbers locked in:** 12,723 questions (10,178 train / 1,272 dev / 1,273 test); 18 books / 12.85M words; 4.07% long-vignette base rate; Harrison's = 24.95% of corpus by word count.
 
@@ -167,7 +171,7 @@ This phase builds the artefacts every later notebook *loads*. Build them once an
 | 4 | Drop chunks with fewer than 30 tokens (boilerplate / table residue). |
 | 5 | Save `data/processed/chunks.parquet`. Print per-book chunk count + token-distribution histogram to verify chunking is sensible. |
 
-**Acceptance check:** ~32k–40k chunks total, mean ~400 tokens, no chunk >450 tokens, Harrison's still ~25% of chunks (corpus-frequency bias preserved per `docs/dataset/README.md` §3.1).
+**Acceptance check:** ~32k–40k chunks total, mean ~400 tokens, no chunk >450 tokens, Harrison's still ~25% of chunks (corpus-frequency bias preserved per `docs/dataset.md` §3.1).
 
 ### Notebook 02 — `02_embeddings_and_indices.ipynb`
 
@@ -214,7 +218,7 @@ The full RAGAS suite needs **reference contexts** and **reference answers** that
 | Stage | Action |
 |---|---|
 | **A. Stratified sampling — 300 of 12,723** | From the 4-option dataset. Stratify across `meta_info` (Step 1 / Step 2&3) × length bucket (≤120 words / 121–200 / >200). Force 60 long-vignette rows so the multi-hop architecture has a fair test surface. Random seed = 42. |
-| **B. Hybrid retrieval per question** | For each sampled row: BGE-large query (with prefix) + BM25 + RRF k=60 → top-10 candidate chunks. Construction-time only: include the gold answer text in the search query (`question + " " + answer + " " + " ".join(metamap_phrases[:8])`). This is *allowed* for golden-set construction (`docs/golden-data/methodology.md` §3) — the bias toward retrieving answer-supporting chunks is the point. |
+| **B. Hybrid retrieval per question** | For each sampled row: BGE-large query (with prefix) + BM25 + RRF k=60 → top-10 candidate chunks. Construction-time only: include the gold answer text in the search query (`question + " " + answer + " " + " ".join(metamap_phrases[:8])`). The bias toward retrieving answer-supporting chunks is intentional during golden-set construction. |
 | **C. GPT-4o evidence selection (Pass 1)** | Prompt **`gpt-4o`** (full, not mini) with question + correct answer + 10 candidate passages. Returns: 1–3 strongest supporting passages, 3–8 medical keywords, `is_evidence_sufficient`. Temperature 0, JSON mode. |
 | **D. GPT-4o reference answer (Pass 2)** | Prompt **`gpt-4o`** with question + correct answer + selected gold context. Returns: one-sentence `reference_answer`, 3–6 sentence `reference_explanation` grounded in the gold context, `why_other_options_are_less_suitable`, `hallucination_check_points` (atomic claims a faithful generation must cover), `question_type` ∈ {diagnosis, treatment, mechanism, management, other}, `requires_multihop` (yes/no). Temperature 0.2, JSON mode. |
 | **E. GPT-4o validation (Pass 3)** | Prompt **`gpt-4o`** to score each row 0–5 on evidence relevance, faithfulness, explanation quality. Assess hallucination risk (low/medium/high). Decide `final_status` ∈ {accepted, needs_review, rejected}. Temperature 0, JSON mode. |
@@ -227,9 +231,9 @@ The full RAGAS suite needs **reference contexts** and **reference answers** that
 
 **Why a different family for the judge:** the constructor is OpenAI/GPT-4o. The answerer (Phase 4) is LLaMA. The RAGAS judge in Phase 4 is **Claude 3.5 Sonnet** — a third family — to kill evaluator-on-evaluator bias on metrics where the reference answer (constructor output) is consumed by the judge (Context Recall, Context Precision, Answer Correctness).
 
-**Why build from scratch instead of reusing the existing 65-row golden set:** the existing set was built with MiniLM + 200-token chunks against `chunks.parquet` that no longer exists in this fresh build. Rebuilding ensures every `chunk_id` reference is valid against the new BGE/400-token index. The legacy set in `golden-data/` stays as reference but is not consumed.
+**Why build from scratch:** earlier exploratory work used MiniLM + 200-token chunks; those artefacts have been deleted. Building fresh against the new BGE-large + 400/80-token index ensures every `chunk_id` reference is valid.
 
-**Acceptance check:** ≥ 220 accepted rows out of 300, mean per-row gold context ≥ 200 words, every `chunk_id` resolvable in `chunks.parquet`, `requires_multihop = "yes"` rate < 50% (the 77% rate in the legacy 65-row set was an artefact of GPT-4 over-labelling — see `docs/golden-data/analysis.md` §6 Finding 1; tighten the prompt definition this time).
+**Acceptance check:** ≥ 220 accepted rows out of 300, mean per-row gold context ≥ 200 words, every `chunk_id` resolvable in `chunks.parquet`, `requires_multihop = "yes"` rate < 50% (earlier exploratory runs over-labelled multi-hop at ~77% — tighten the Pass-2 prompt definition).
 
 **Methodology caveat to write up.** *"The golden RAGAS reference subset was set to 300 stratified questions for cost-efficiency. This sample preserves clean per-stratum analysis (≥ 60 rows per `question_type` bucket) while keeping construction cost under $15. Statistical-significance tests on architecture-level RAGAS scores are reported with this sample size acknowledged."* — saves you from a viva surprise.
 
