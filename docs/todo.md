@@ -32,14 +32,14 @@
 
 ## 2 · Shared infrastructure (chunking + dual embedding + indices)
 
-### 2.1 Notebook 01 — `notebooks/01_chunking_and_corpus_prep.ipynb`
+### 2.1 Notebook 01 — `notebooks/01_chunking_and_corpus_prep.ipynb` ✅ COMPLETE (2026-05-03)
 
-- [ ] Load all 18 textbooks from `medqa-data/textbooks/en/*.txt`
-- [ ] Recursive 400-token chunker, **80-token overlap**, tiktoken cl100k_base for token counting
-- [ ] Drop chunks <30 tokens; assign deterministic `chunk_id` (`<book>_chunk_<5-digit>`)
-- [ ] Save `data/processed/chunks.parquet` with columns: `chunk_id`, `book_name`, `text`, `n_tokens`, `n_chars`
-- [ ] Acceptance (recalibrated 2026-05-03): **~50k–75k** total chunks (the original "~32k–40k" was mathematically unreachable for a 12.85 M-word corpus with 400/80 config); mean **300–380** tokens; max ≤ 450; Harrison's still ~25% of chunks
-- **Deliverable:** `chunks.parquet` exists; per-book chunk-count bar chart printed in the notebook
+- [x] Load all 18 textbooks from `medqa-data/textbooks/en/*.txt` (2026-05-03)
+- [x] Recursive 400-token chunker, **80-token overlap**, tiktoken cl100k_base for token counting (2026-05-03)
+- [x] Drop chunks <30 tokens; assign deterministic `chunk_id` (`<book>_chunk_<5-digit>`) (2026-05-03)
+- [x] Save `data/processed/chunks.parquet` with columns: `chunk_id`, `book_name`, `text`, `n_tokens`, `n_chars` (2026-05-03)
+- [x] Acceptance (recalibrated 2026-05-03): **~50k–75k** total chunks (the original "~32k–40k" was mathematically unreachable for a 12.85 M-word corpus with 400/80 config); mean **300–380** tokens; max ≤ 450; Harrison's still ~25% of chunks (2026-05-03 — actual: **67,599 chunks, mean 323.9 tokens, max ≤ 400, Harrison's 24.66 %**)
+- **Deliverable:** `chunks.parquet` exists (~30 MB, 67,599 rows); per-book chunk-count bar chart + token-distribution histogram printed in the notebook ✓
 
 ### 2.2 Notebook 02 — `notebooks/02_embeddings_and_indices.ipynb`
 
@@ -64,7 +64,7 @@
 Build in this dependency order. Add a 3-question unit test against `chunks.parquet` for each module.
 
 - [ ] `src/data/loaders.py` — load parquet + golden JSONL
-- [ ] `src/data/chunker.py` — recursive 400/80 chunker (called by Notebook 01)
+- [x] `src/data/chunker.py` — recursive 400/80 chunker (called by Notebook 01) (2026-05-03 — built alongside §2.1)
 - [ ] `src/data/indices.py` — load ChromaDB (BGE) and BM25 from disk
 - [ ] `src/retrieval/base.py` — `Retriever` ABC: `retrieve(q: str, k: int) -> list[Chunk]`
 - [ ] `src/retrieval/none.py` — returns `[]` (for EXP_01)
