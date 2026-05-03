@@ -1,0 +1,49 @@
+# =============================================================================
+# Thesis project — Python dependencies
+# Target: Python 3.12 on macOS (Apple Silicon, no local GPU)
+# Install: pip install -r requirements.txt
+# =============================================================================
+
+# --- Core data + numerics (used by every notebook) -------------------------
+pandas>=2.2,<3.0
+numpy>=1.26,<2.3
+pyarrow>=15.0
+scipy>=1.11
+
+# --- Visualisation ---------------------------------------------------------
+matplotlib>=3.8
+seaborn>=0.13
+
+# --- Jupyter -----------------------------------------------------------------
+jupyter>=1.0
+ipykernel>=6.29
+notebook>=7.0
+
+# --- Excel / file I/O ------------------------------------------------------
+openpyxl>=3.1
+
+# --- Utilities --------------------------------------------------------------
+python-dotenv>=1.0
+tqdm>=4.66
+requests>=2.31
+
+# --- LLM clients (Step 0 smoke test, baseline & beyond) -------------------
+groq>=0.11
+openai>=1.40
+
+# --- Retrieval & embeddings (Naive / Sparse / Hybrid / Multi-Hop RAG) -----
+sentence-transformers>=3.0
+faiss-cpu>=1.8
+rank-bm25>=0.2.2
+langchain>=0.3
+langchain-community>=0.3
+
+# --- Evaluation & explainability -------------------------------------------
+ragas>=0.2
+lime>=0.2.0.1
+shap>=0.46
+scikit-learn>=1.4
+
+# --- NLP helpers ------------------------------------------------------------
+nltk>=3.9
+tiktoken>=0.7
