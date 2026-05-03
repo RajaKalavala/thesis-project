@@ -158,8 +158,8 @@ This section records what we *thought* about and *didn't* pick, so the methodolo
 | **LangChain** (broadly) | Adds abstraction layers that hide important details. We use only `RecursiveCharacterTextSplitter`. |
 | **LangGraph** | Same — over-abstracts the multi-hop control flow we want to write directly. |
 | **LangSmith** (observability) | Free-tier 5k-trace limit insufficient (we'll do 50k+ calls). Disk-cache + structured `predictions.jsonl` already give equivalent observability for free. |
-| **RunPod / Lambda Labs** (GPU rental) | Almost everything is API-bound (Groq/OpenAI/Anthropic). The one CPU/GPU task (embedding 36k chunks) takes ~25 min on M1 Pro CPU or ~12 min on Apple MPS. Not worth the rental setup overhead. |
-| **Colab** (free or Pro) | Same logic — only useful for the one-time embedding sweep, which the M1 Pro handles in 12–25 min. Colab's 12-h session limit makes long Groq runs *worse* on Colab. |
+| **RunPod / Lambda Labs** (GPU rental) | Almost everything is API-bound (Groq/OpenAI/Anthropic). The one CPU/GPU task (embedding ~67k chunks) takes ~45–50 min on M1 Pro CPU or ~22 min on Apple MPS. Not worth the rental setup overhead. |
+| **Colab** (free or Pro) | Same logic — only useful for the one-time embedding sweep, which the M1 Pro handles in 22–50 min. Colab's 12-h session limit makes long Groq runs *worse* on Colab. |
 | **vLLM / TGI** (self-hosted serving) | We're not self-hosting any model. Out of scope. |
 | **Pinecone**, **Weaviate**, **Qdrant** | Viable vector DBs but require external services. ChromaDB is simpler. |
 

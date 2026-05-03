@@ -16,7 +16,7 @@
 | 2 | Embedding model | **`BAAI/bge-large-en-v1.5`** (1024-d, 335M, 512-token max) | Strong general SOTA. Top-tier on MTEB; ~75 nDCG@10 on TREC-COVID (medical-IR benchmark). Open weights, sentence-transformers compatible. **A medical-fine-tuned ablation (e.g. MedEmbed-large) was scoped out for compute budget — identified as future work in the writeup.** |
 | 3 | Vector database | **ChromaDB** (one persistent collection) | Built-in persistence + metadata filtering. |
 | 4 | Sparse index | **`rank-bm25`** (Okapi BM25) | Standard medical-IR baseline; pairs with ChromaDB for Hybrid RAG. |
-| 5 | Chunking | **Recursive 400-token chunks, 80-token overlap** (20%) | 20% overlap is the standard in 2024–25 medical-RAG papers; protects against boundary loss. ~36k chunks. |
+| 5 | Chunking | **Recursive 400-token chunks, 80-token overlap** (20%) | 20% overlap is the standard in 2024–25 medical-RAG papers; protects against boundary loss. ~67k chunks (recalibrated 2026-05-03; original "~36k" estimate was unreachable for a 12.85 M-word corpus with this config — see Phase 2 for math). |
 | 6 | Hybrid fusion | Reciprocal Rank Fusion, **k=60** | Proposal §7.6.3; standard. |
 | 7 | Multi-Hop budget | **3 hops max** | Proposal §7.6.4. |
 | 8 | Evaluation surface (full) | **All 12,723 MedQA US questions** | Train + dev + test combined — canonical benchmark scope per the corrected workbook. |
@@ -77,8 +77,8 @@ thesis-project/
 │   │   ├── medqa_4opt.parquet         ✓ from Notebook 00
 │   │   ├── textbook_stats.parquet     ✓ from Notebook 00
 │   │   ├── eda_summary.json           ✓ from Notebook 00
-│   │   ├── chunks.parquet             ← from Notebook 01 (~36k rows)
-│   │   ├── embeddings.npy             ← from Notebook 02 (BGE-large, ~36k × 1024 float32)
+│   │   ├── chunks.parquet             ← from Notebook 01 (~67k rows)
+│   │   ├── embeddings.npy             ← from Notebook 02 (BGE-large, ~67k × 1024 float32)
 │   │   ├── golden_ragas_50_pilot.jsonl   ← from Notebook 04 stage 1 (smoke pilot, ~$2)
 │   │   └── golden_ragas_300.jsonl        ← from Notebook 04 stage 2 (production, +~$10)
 │   └── indices/
@@ -161,7 +161,7 @@ This phase builds the artefacts every later notebook *loads*. Build them once an
 
 ### Notebook 01 — `01_chunking_and_corpus_prep.ipynb`
 
-**Goal.** Split the 18-textbook corpus into ~32k recursively-chunked passages.
+**Goal.** Split the 18-textbook corpus into ~67k recursively-chunked passages (recalibrated from the original "~32k" — see acceptance-check note below).
 
 | Step | Action |
 |---|---|
@@ -171,7 +171,7 @@ This phase builds the artefacts every later notebook *loads*. Build them once an
 | 4 | Drop chunks with fewer than 30 tokens (boilerplate / table residue). |
 | 5 | Save `data/processed/chunks.parquet`. Print per-book chunk count + token-distribution histogram to verify chunking is sensible. |
 
-**Acceptance check:** ~32k–40k chunks total, mean ~400 tokens, no chunk >450 tokens, Harrison's still ~25% of chunks (corpus-frequency bias preserved per `docs/dataset.md` §3.1).
+**Acceptance check (recalibrated 2026-05-03):** ~50k–75k chunks total, mean 300–380 tokens, no chunk >450 tokens, Harrison's still ~25% of chunks (corpus-frequency bias preserved per `docs/dataset.md` §3.1). The corpus has ≈ 16.7 M cl100k tokens (12.85 M words × 1.30 tok/word). With chunk_size = 400 and overlap = 80, each chunk advances ≤ 320 unique tokens, so the floor is ~52k chunks even with perfect packing; `RecursiveCharacterTextSplitter` honours paragraph/sentence boundaries and fills to ~80% of the cap, landing around 65–70k chunks at mean ≈ 320–340 tokens. The original `plan.md §0 #5` estimate of ~36k was mathematically unreachable for this corpus + config; the 400/80 config itself stays locked (BGE 512-token max ⇒ chunk_size ≤ 400).
 
 ### Notebook 02 — `02_embeddings_and_indices.ipynb`
 
@@ -181,7 +181,7 @@ This phase builds the artefacts every later notebook *loads*. Build them once an
 |---|---|
 | 1 | Load `chunks.parquet`. |
 | 2 | Load `BAAI/bge-large-en-v1.5` via `sentence-transformers`. **Important:** prepend BGE's recommended retrieval-passage prefix (no prefix for passages in v1.5; the query prefix `"Represent this sentence for searching relevant passages: "` is applied at *query* time inside `src/retrieval/`). |
-| 3 | Embed all chunks in batches of 32 (M1 Pro CPU ≈ 25 min, MPS ≈ 12 min). Save to `data/processed/embeddings.npy` (float32, ~36k × 1024). |
+| 3 | Embed all chunks in batches of 32 (M1 Pro CPU ≈ 45–50 min, MPS ≈ 22 min — scaled from earlier ~25 min / ~12 min estimate when chunk count was assumed ~36k; actual is ~67k). Save to `data/processed/embeddings.npy` (float32, ~67k × 1024 ≈ 274 MB). |
 | 4 | Initialise **persistent** ChromaDB: `chromadb.PersistentClient(path="data/indices/chroma_textbooks")`. Create collection `medqa_textbooks_bge_400` with `metadata={"hnsw:space": "cosine"}`. Add chunks in batches of 1,000 — pass `ids`, `embeddings`, `documents`, `metadatas={book_name, n_tokens}`. |
 | 5 | Build BM25 index over the same chunk text (lowercase + simple word-split). Save as `data/indices/bm25.pkl` alongside the chunk-id ordering. |
 | 6 | Sanity check: query *"What is the first-line treatment for community-acquired pneumonia?"* on both indices (ChromaDB dense + BM25 sparse). Top-3 from each should clearly relate to pneumonia/antibiotics; if not, debug before proceeding. |
@@ -522,7 +522,7 @@ The dominant cost is **wall-clock**, not money. Disk-cache every Groq + Claude +
 |---|---|---|
 | Groq rate limits stall a long run | High | Disk-cache every response; resumable runners; back off + retry on 429s. |
 | Golden-set construction labels `requires_multihop = yes` too aggressively (legacy 77%) | Medium | In Pass 2 prompt, define multi-hop as *"requires combining ≥2 distinct facts from ≥2 distinct passages"*. Spot-check 30 rows. |
-| BGE-large index doesn't fit in 16 GB | Low | 32k × 1024 × 4 bytes = 131 MB. Plenty of headroom. ChromaDB on disk. |
+| BGE-large index doesn't fit in 16 GB | Low | 67k × 1024 × 4 bytes ≈ 274 MB. Plenty of headroom on a 16 GB box. ChromaDB on disk. |
 | Same-LLM-family bias (LLaMA generates, LLaMA judges) | High if not mitigated | RAGAS judge = **`claude-3-5-sonnet`** (different family from both generator and constructor). |
 | Multi-Hop RAG loops indefinitely | Medium | Hard cap 3 hops, hard cap tokens/hop, stop early if no new chunks retrieved. |
 | LIME/SHAP perturbation cost explodes | Medium | Sample 200 Q/arch (documented in methodology). |

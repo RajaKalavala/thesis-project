@@ -198,7 +198,7 @@ medqa-data/questions/US/4_options/*.jsonl ──► Notebook 00 ──► medqa_
 medqa-data/textbooks/en/*.txt              ──► Notebook 00 ──► textbook_stats.parquet
                                                                        │
                                                                        ▼
-                                                          Notebook 01 ──► chunks.parquet (~36k rows)
+                                                          Notebook 01 ──► chunks.parquet (~67k rows)
                                                                        │
                                           ┌────────────────────────────┼─────────────────────────────┐
                                           ▼                            ▼                             ▼
@@ -321,7 +321,7 @@ When you're about to launch a 6-hour Groq run:
 
 ## 8. Hardware split — M1 Pro 16 GB vs Google Colab
 
-> **TL;DR for hardware:** the **M1 Pro does everything**. Colab gives you nothing for this thesis — every heavy workload is API-bound (Groq / OpenAI / Anthropic). The one task that benefits from a GPU is embedding the 36k chunks once (~25 min on M1 Pro CPU, ~12 min on MPS, ~5 min on Colab T4) — not worth the Colab setup overhead.
+> **TL;DR for hardware:** the **M1 Pro does everything**. Colab gives you nothing for this thesis — every heavy workload is API-bound (Groq / OpenAI / Anthropic). The one task that benefits from a GPU is embedding the ~67k chunks once (~45–50 min on M1 Pro CPU, ~22 min on MPS, ~9 min on Colab T4) — not worth the Colab setup overhead.
 
 ### 8.1 What runs on M1 Pro — and how
 
@@ -329,7 +329,7 @@ When you're about to launch a 6-hour Groq run:
 |---|---|---|
 | Phase 1 — EDA | ✅ Trivial | <5 min, ~500 MB peak. Already done. |
 | Phase 2 — Chunking (Notebook 01) | ✅ Trivial | ~1–2 min CPU, <1 GB peak. |
-| Phase 2 — **Dense embedding × 2 embedders** (Notebook 02) | ⚠️ Slow but feasible | ~25–35 min per embedder on CPU; ~10–15 min per embedder on Apple MPS (~2× faster than CPU). 1.3 GB model footprint each — load one, embed, unload, load the next. |
+| Phase 2 — **Dense embedding** (Notebook 02, BGE-large only) | ⚠️ Slow but feasible | ~45–50 min on CPU, ~22 min on Apple MPS for ~67k chunks (single embedder per the locked plan; the dual-embedder plan was scoped out). 1.3 GB model footprint. |
 | Phase 2 — ChromaDB build | ✅ Trivial | Disk-based, ~1 min. |
 | Phase 2 — BM25 index | ✅ Trivial | Pure Python, ~30 s. |
 | Phase 2 — Smoke test (Notebook 03) | ✅ Trivial | 3 questions, ~30 s. |
@@ -347,7 +347,7 @@ When you're about to launch a 6-hour Groq run:
 
 | Task | Local M1 Pro | Colab T4 (free) | Worth Colab? |
 |---|---|---|---|
-| BGE-large embed 36k chunks (one-time) | 25–35 min CPU / ~12 min MPS | ~5 min | **No — the setup overhead exceeds the speedup** |
+| BGE-large embed ~67k chunks (one-time) | 45–50 min CPU / ~22 min MPS | ~9 min | **No — the setup overhead exceeds the speedup** |
 | Anything else in this thesis | Already API-bound or trivially CPU-bound | Same speed (Colab CPU ≈ M1 Pro CPU); GPU unused for API calls | **No** |
 
 **Colab pitfalls:**

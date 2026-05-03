@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(.venv/bin/python)"
+      "Bash(.venv/bin/python)",
+      "Bash(.venv/bin/python -c \"import json; nb = json.load\\(open\\('/Users/rajak/Workstation/Projects/myGitHub/thesis-project/notebooks/00_data_processing_and_eda.ipynb'\\)\\); cells = nb['cells']; [print\\(f'--- Cell {i} \\({c[\\\\\"cell_type\\\\\"]}\\) ---'\\); print\\(''.join\\(c['source']\\)[:400]\\) for i,c in enumerate\\(cells[:8]\\)]\")",
+      "Bash(.venv/bin/python -c \"import langchain_text_splitters; import tiktoken; print\\('OK', langchain_text_splitters.__version__, tiktoken.__version__\\)\")",
+      "Bash(.venv/bin/python -c \"from langchain_text_splitters import RecursiveCharacterTextSplitter; import tiktoken; enc = tiktoken.get_encoding\\('cl100k_base'\\); print\\('OK splitter+tiktoken; sample tokens for hello world =', len\\(enc.encode\\('hello world'\\)\\)\\)\")",
+      "Bash(mkdir -p /Users/rajak/Workstation/Projects/myGitHub/thesis-project/src/data)",
+      "Bash(touch /Users/rajak/Workstation/Projects/myGitHub/thesis-project/src/__init__.py /Users/rajak/Workstation/Projects/myGitHub/thesis-project/src/data/__init__.py)",
+      "Bash(.venv/bin/python -c ' *)"
     ]
   }
 }
