@@ -209,7 +209,7 @@ medqa-data/textbooks/en/*.txt              ──► Notebook 00 ──► textb
                                 Notebook 02 ──► embeddings_medembed  ──► chroma_medembed/
                                                                        │
                                                                        ▼
-                                                          Notebook 04 ──► golden_ragas_1000.jsonl
+                                                          Notebook 04 ──► golden_ragas_300.jsonl
                                                                        │
                                           ┌────────────────────────────┼─────────────────────────────┐
                                           ▼                            ▼                             ▼
@@ -339,7 +339,7 @@ When you're about to launch a 6-hour Groq run:
 | Phase 2 — Smoke test (Notebook 03) | ✅ Trivial | 3 questions, ~30 s. |
 | Phase 3 — **Golden RAGAS dataset** (Notebook 04) | ✅ API-bound | All compute is OpenAI API calls. M1 Pro just orchestrates. ~4–6 h wall-clock, network-stable required. |
 | Phase 4 — **Group A (5 experiments × 12,723)** | ✅ API-bound (long) | All compute is Groq API. M1 Pro orchestrates + caches. ~30–40 h wall-clock total. Run as backgrounded Python scripts overnight. |
-| Phase 4 — RAGAS judging | ✅ API-bound | Anthropic API. ~5 h wall-clock for all architectures × 1,000 golden × 5 metrics. |
+| Phase 4 — RAGAS judging | ✅ API-bound | Anthropic API. ~2 h wall-clock for all architectures × 300 golden × 5 metrics. |
 | Phase 5 — Adaptive RAG | ✅ API-bound | ~10 h Groq. |
 | Phase 6 — LIME / SHAP | ✅ Mostly API-bound | Local: small linear models, perturbation logic. Remote: Groq for re-prompting. ~6–10 h. |
 | Phase 7 — Confidence | ✅ Trivial | Pure Python aggregation, no LLM calls. <30 min. |
@@ -425,7 +425,7 @@ If you find yourself swapping (Activity Monitor → Memory → Memory Pressure g
 | 2 | Build `src/data/indices.py`. Notebook 02 (dual embedding + ChromaDB + BM25). | `embeddings_*.npy`, `chroma_*/`, `bm25.pkl` | M1 Pro (or Colab for ~30 min embedding speedup) |
 | 3 | Build `src/retrieval/{base,naive,sparse,hybrid}.py` + `src/generation/groq_client.py` + `src/generation/prompts.py`. Notebook 03 (smoke test). | First end-to-end answers on 3 dev questions | M1 Pro |
 | 4 | Build `src/eval/{non_llm_metrics,runner}.py`. Run **EXP_01 No-RAG** on full 12,723 as the simplest experiment to flush bugs. | `results/exp_01_base_llm/summary.json` | M1 Pro overnight |
-| 5 | Build `src/generation/openai_client.py` + Notebook 04 (golden RAGAS dataset). | `golden_ragas_1000.jsonl` | M1 Pro |
+| 5 | Build `src/generation/openai_client.py` + Notebook 04 (golden RAGAS dataset, staged 50 → 300). | `golden_ragas_300.jsonl` | M1 Pro |
 
 By session 5 you have *every reusable piece* of the pipeline. Sessions 6+ are mostly running experiments and writing.
 

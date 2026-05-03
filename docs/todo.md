@@ -89,16 +89,17 @@ Build in this dependency order. Add a 3-question unit test against `chunks.parqu
 
 ### Notebook 04 — `notebooks/04_golden_ragas_dataset.ipynb`
 
-- [ ] **Stage A** — Stratified sample 1,000 of 12,723 (4-option). Stratify by `meta_info` × length bucket; force 200 long-vignettes. Seed 42.
+- [ ] **Stage 0 (smoke pilot, mandatory)** — Sample **50** stratified questions, run all stages A–G end-to-end on this subset, save to `golden_ragas_50_pilot.jsonl`. Cost ~$2. Verify Pass-1 sufficiency rate ≥ 90%, all `chunk_id`s resolve, `requires_multihop` rate < 60%. Iterate prompts if any check fails.
+- [ ] **Stage A** — Stratified sample 300 total of 12,723 (4-option). 50 from the pilot + 250 fresh. Stratify by `meta_info` × length bucket; force 60 long-vignettes. Seed 42.
 - [ ] **Stage B** — Hybrid retrieval (BGE + BM25 + RRF k=60) → top-10 candidates per question. Construction-time only: include gold answer text + first 8 metamap phrases in the search query.
 - [ ] **Stage C — Pass 1** — `gpt-4o` evidence selection (temp 0, JSON mode) → 1–3 strongest passages, 3–8 medical keywords, `is_evidence_sufficient`
 - [ ] **Stage D — Pass 2** — `gpt-4o` reference answer + explanation (temp 0.2, JSON mode) → `reference_answer`, `reference_explanation`, `why_other_options_are_less_suitable`, `hallucination_check_points`, `question_type`, `requires_multihop`
 - [ ] **Stage E — Pass 3** — `gpt-4o` validation (temp 0, JSON mode) → 0–5 scores + `final_status`
 - [ ] **Stage F — Audit** — Pure-Python: gold answer in reference_answer; evidence_keywords in gold_context; chunk_ids resolvable in chunks.parquet
-- [ ] **Stage G — Save** — `data/processed/golden_ragas_1000.jsonl` (accepted) + companion `_needs_review.jsonl` + `_dropped.jsonl`
+- [ ] **Stage G — Save** — `data/processed/golden_ragas_300.jsonl` (accepted) + companion `_needs_review.jsonl` + `_dropped.jsonl`
 - [ ] Manually spot-check 30 accepted rows for grounding quality
 - [ ] Multi-hop label audit: spot-check 10 `requires_multihop=yes` rows; if rate > 50%, tighten the Pass-2 prompt definition and re-run those rows
-- **Deliverable:** ≥ 700 accepted rows; rate of `requires_multihop=yes` < 50%; total cost ≤ $50
+- **Deliverable:** ≥ 220 accepted rows out of 300; rate of `requires_multihop=yes` < 50%; total construction cost ≤ $14
 
 ---
 
@@ -330,6 +331,7 @@ When all 16 experiments are done:
 | 2026-05-03 | **GPT-4o (full) for golden constructor** | plan.md §0 #10 | 3-pass JSON-strict reliability |
 | 2026-05-03 | **Claude 3.5 Sonnet as RAGAS judge** | plan.md §0 #11 | Different family from generator + constructor |
 | 2026-05-03 | **Phase 10 — Demo UI accepted as optional parallel track** | plan.md §12 (Phase 10) | Cached-only mode, 4 tabs, Streamlit. Build only if time permits; drop if experiments slip. Schema-lock in Stage A protects against rework. |
+| 2026-05-03 | **Golden RAGAS dataset sized at 300** (was originally 1,000) | plan.md §0 #9, §5 | Cost-efficiency. 300 preserves ≥ 60 rows per `question_type` bucket for stratified analysis; below-the-floor risk at 200 was avoided. Built in two stages: 50-row pilot ($2) → 250 production ($10). |
 
 ---
 

@@ -220,15 +220,15 @@ The thesis uses both, for different purposes:
 
 | Property | Raw MedQA US (full) | Curated golden dataset (to be built fresh) |
 |---|---|---|
-| Source | `medqa-data/questions/US/` (4-option variant preferred) | `data/processed/golden_ragas_1000.jsonl` (Notebook 04 — to build) |
-| Size | **12,723 questions** (train + dev + test combined) | **1,000 stratified rows** (target — see `plan.md` §5) |
+| Source | `medqa-data/questions/US/` (4-option variant preferred) | `data/processed/golden_ragas_300.jsonl` (Notebook 04 — to build) |
+| Size | **12,723 questions** (train + dev + test combined) | **300 stratified rows** (built in two stages: 50-row pilot + 250 more — see `plan.md` §5) |
 | Built by | Original MedQA paper (Jin et al., 2020) | This thesis — Notebook 04 from-scratch construction with GPT-4o-mini three-pass pipeline |
 | Has reference *explanations* | No (only `answer` and `answer_idx`) | Yes (`reference_explanation`, `gold_context`, `hallucination_check_points`) |
 | Suitable for | **Exact-match accuracy**, **Retrieval Recall@K**, **latency** for all 16 experiments | **Full RAGAS suite** — Faithfulness, Context Precision, Context Recall, Answer Relevancy, Answer Correctness |
 | Stratification fields | `meta_info`, length-based long-vignette flag | `question_type` ∈ {diagnosis, treatment, mechanism, management, other}, `requires_multihop`, plus all raw-MedQA fields |
 | Long-vignette rate | 4.07% (representative) | ~20% (deliberately oversampled for Multi-Hop fairness) |
 
-**Why every experiment evaluates on the full 12,723** — exact-match accuracy and retrieval recall don't need reference explanations; they only need `answer_idx` and the retrieved-chunk IDs. So they scale to the full corpus. The 1,000-row golden subset is *only* needed for the RAGAS-suite metrics that demand a reference answer + reference context.
+**Why every experiment evaluates on the full 12,723** — exact-match accuracy and retrieval recall don't need reference explanations; they only need `answer_idx` and the retrieved-chunk IDs. So they scale to the full corpus. The 300-row golden subset is *only* needed for the RAGAS-suite metrics that demand a reference answer + reference context.
 
 > **Legacy 65-row golden set in [`golden-data/`](../../golden-data/):** built earlier with MiniLM + 200-token chunks. **Not consumed by the from-scratch plan** — the new BGE-large + MedEmbed + 400/80-token chunks would invalidate every `chunk_id` reference in it. Kept as reference material only; see `docs/golden-data/methodology.md` for the construction methodology being re-used.
 

@@ -21,9 +21,9 @@
 | 6 | Hybrid fusion | Reciprocal Rank Fusion, **k=60** | Proposal §7.6.3; standard. |
 | 7 | Multi-Hop budget | **3 hops max** | Proposal §7.6.4. |
 | 8 | Evaluation surface (full) | **All 12,723 MedQA US questions** | Train + dev + test combined — canonical benchmark scope per the corrected workbook. |
-| 9 | Golden RAGAS reference subset | **Stratified 1,000 questions** built from scratch | Drives Faithfulness, Context Recall, Context Precision, Answer Correctness on 1,000 rows; the remaining 11,723 still get exact-match accuracy and retrieval recall. |
-| 10 | Golden-set **constructor** LLM | **`gpt-4o`** (full, not mini) — three-pass JSON pipeline | Strict-JSON 3-pass construction needs the stronger model; mini drops more under structured-output stress. ~$40 for 1,000 questions. |
-| 11 | RAGAS **judge** LLM | **`claude-3-5-sonnet`** (Anthropic) — different family from generator AND constructor | Kills evaluator-on-evaluator bias. ~$50–100 across 1,000 golden × 5 metrics × 5 architectures. |
+| 9 | Golden RAGAS reference subset | **Stratified 300 questions** built from scratch in two stages: 50-row smoke pilot → 250 more for production (= 300 total) | Drives Faithfulness, Context Recall, Context Precision, Answer Correctness on 300 rows; the remaining 12,423 still get exact-match accuracy and retrieval recall. Sized for cost-efficiency while preserving per-stratum analysis room (≥ 60 rows per `question_type` bucket). |
+| 10 | Golden-set **constructor** LLM | **`gpt-4o`** (full, not mini) — three-pass JSON pipeline | Strict-JSON 3-pass construction needs the stronger model; mini drops more under structured-output stress. ~$12 for 300 questions. |
+| 11 | RAGAS **judge** LLM | **`claude-3-5-sonnet`** (Anthropic) — different family from generator AND constructor | Kills evaluator-on-evaluator bias. ~$15–25 across 300 golden × 5 metrics × 5 architectures (more if embedder ablation expands). |
 | 12 | Top-k passed to LLM | **k=5** | Tune in EXP_02 if Context Recall is the bottleneck. |
 
 ---
@@ -81,7 +81,8 @@ thesis-project/
 │   │   ├── chunks.parquet             ← from Notebook 01 (~36k rows)
 │   │   ├── embeddings_bge.npy         ← from Notebook 02 (BGE-large, ~36k × 1024 float32)
 │   │   ├── embeddings_medembed.npy    ← from Notebook 02 (MedEmbed-large, ~36k × 1024 float32)
-│   │   └── golden_ragas_1000.jsonl    ← from Notebook 04 (built fresh with GPT-4o)
+│   │   ├── golden_ragas_50_pilot.jsonl   ← from Notebook 04 stage 1 (smoke pilot, ~$2)
+│   │   └── golden_ragas_300.jsonl        ← from Notebook 04 stage 2 (production, +~$10)
 │   └── indices/
 │       ├── chroma_bge/                ← ChromaDB collection (BGE embeddings)
 │       ├── chroma_medembed/           ← ChromaDB collection (MedEmbed embeddings)
@@ -205,23 +206,27 @@ If anything is off here, fix it before Phase 3 — the same code path runs 12,72
 
 ## 5. Phase 3 — Golden RAGAS dataset (built from scratch)
 
-The full RAGAS suite needs **reference contexts** and **reference answers** that don't exist in raw MedQA. This phase builds them for a stratified 1,000-question subset.
+The full RAGAS suite needs **reference contexts** and **reference answers** that don't exist in raw MedQA. This phase builds them for a stratified **300-question subset** in two stages: a **50-row smoke pilot first** (~$2) to flush pipeline bugs cheaply, then **250 more for production** (~$10). The 300 size is the budget-efficient floor that preserves clean per-stratum analysis (≥ 60 rows per `question_type` bucket); see decision rationale in `docs/todo.md` decision log.
 
 ### Notebook 04 — `04_golden_ragas_dataset.ipynb`
 
-**Goal.** Produce `data/processed/golden_ragas_1000.jsonl` containing per-question `gold_context`, `reference_answer`, `reference_explanation`, `hallucination_check_points`.
+**Goal.** Produce `data/processed/golden_ragas_300.jsonl` containing per-question `gold_context`, `reference_answer`, `reference_explanation`, `hallucination_check_points`.
+
+**Build order:**
+1. **Stage 0 (mandatory smoke pilot):** sample 50 questions, run all stages A–G end-to-end, save to `golden_ragas_50_pilot.jsonl`. Verify: Pass-1 sufficiency rate ≥ 90 %, every cited `chunk_id` resolves, `requires_multihop` rate < 60 %. If any check fails, fix the prompts or pipeline before scaling. Cost: ~$2.
+2. **Stage 1 (production build):** sample 250 *additional* questions (different seed offset), run the same pipeline, merge into `golden_ragas_300.jsonl`. Cost: ~$10.
 
 | Stage | Action |
 |---|---|
-| **A. Stratified sampling — 1,000 of 12,723** | From the 4-option dataset. Stratify across `meta_info` (Step 1 / Step 2&3) × length bucket (≤120 words / 121–200 / >200). Force 200 long-vignette rows so the multi-hop architecture has a fair test surface. Random seed = 42. |
+| **A. Stratified sampling — 300 of 12,723** | From the 4-option dataset. Stratify across `meta_info` (Step 1 / Step 2&3) × length bucket (≤120 words / 121–200 / >200). Force 60 long-vignette rows so the multi-hop architecture has a fair test surface. Random seed = 42. |
 | **B. Hybrid retrieval per question** | For each sampled row: BGE-large query (with prefix) + BM25 + RRF k=60 → top-10 candidate chunks. Construction-time only: include the gold answer text in the search query (`question + " " + answer + " " + " ".join(metamap_phrases[:8])`). This is *allowed* for golden-set construction (`docs/golden-data/methodology.md` §3) — the bias toward retrieving answer-supporting chunks is the point. |
 | **C. GPT-4o evidence selection (Pass 1)** | Prompt **`gpt-4o`** (full, not mini) with question + correct answer + 10 candidate passages. Returns: 1–3 strongest supporting passages, 3–8 medical keywords, `is_evidence_sufficient`. Temperature 0, JSON mode. |
 | **D. GPT-4o reference answer (Pass 2)** | Prompt **`gpt-4o`** with question + correct answer + selected gold context. Returns: one-sentence `reference_answer`, 3–6 sentence `reference_explanation` grounded in the gold context, `why_other_options_are_less_suitable`, `hallucination_check_points` (atomic claims a faithful generation must cover), `question_type` ∈ {diagnosis, treatment, mechanism, management, other}, `requires_multihop` (yes/no). Temperature 0.2, JSON mode. |
 | **E. GPT-4o validation (Pass 3)** | Prompt **`gpt-4o`** to score each row 0–5 on evidence relevance, faithfulness, explanation quality. Assess hallucination risk (low/medium/high). Decide `final_status` ∈ {accepted, needs_review, rejected}. Temperature 0, JSON mode. |
 | **F. Automated audit** | Pure-Python checks (no LLM): (i) gold answer text appears in `reference_answer`; (ii) all `evidence_keywords` appear in `gold_context`; (iii) every cited `chunk_id` exists in `chunks.parquet`. Any failure ⇒ `quality_status = "needs_review"`. |
-| **G. Save** | Accepted rows → `golden_ragas_1000.jsonl` (target ≥ 700 accepted; needs_review and rejected to companion files). |
+| **G. Save** | Accepted rows → `golden_ragas_300.jsonl` (target ≥ 220 accepted; needs_review and rejected to companion files). |
 
-**Cost estimate.** ~1,000 × 3 GPT-4o passes ≈ **$35–45** (GPT-4o is ~30× pricier than GPT-4o-mini but materially better at strict-JSON multi-pass tasks; the cost on a thesis budget is trivial against the quality lift). Wall time ~4–6 hours with reasonable rate-limit handling.
+**Cost estimate.** ~300 × 3 GPT-4o passes ≈ **$10–14** total (50-row pilot ≈ $2, production +250 ≈ $10). GPT-4o is ~30× pricier than GPT-4o-mini but materially better at strict-JSON multi-pass tasks; for 300 rows the absolute cost difference is small and the quality lift on Pass 2 (reference-explanation generation) is significant. Wall time ~1.5–2 hours total with reasonable rate-limit handling.
 
 **Why `gpt-4o` (full) for the constructor:** the 3-pass JSON-strict pipeline depends on reliable structured output and strong reasoning at Pass 2 (where the reference explanation is *generated*, not just judged). GPT-4o-mini drops more under structured-output stress; for a one-time golden-set build we trade ~$35 for materially better reference quality.
 
@@ -229,7 +234,9 @@ The full RAGAS suite needs **reference contexts** and **reference answers** that
 
 **Why build from scratch instead of reusing the existing 65-row golden set:** the existing set was built with MiniLM + 200-token chunks against `chunks.parquet` that no longer exists in this fresh build. Rebuilding ensures every `chunk_id` reference is valid against the new BGE/400-token index. The legacy set in `golden-data/` stays as reference but is not consumed.
 
-**Acceptance check:** ≥ 700 accepted rows, mean per-row gold context ≥ 200 words, every `chunk_id` resolvable in `chunks.parquet`, `requires_multihop = "yes"` rate < 50% (the 77% rate in the legacy 65-row set was an artefact of GPT-4 over-labelling — see `docs/golden-data/analysis.md` §6 Finding 1; tighten the prompt definition this time).
+**Acceptance check:** ≥ 220 accepted rows out of 300, mean per-row gold context ≥ 200 words, every `chunk_id` resolvable in `chunks.parquet`, `requires_multihop = "yes"` rate < 50% (the 77% rate in the legacy 65-row set was an artefact of GPT-4 over-labelling — see `docs/golden-data/analysis.md` §6 Finding 1; tighten the prompt definition this time).
+
+**Methodology caveat to write up.** *"The golden RAGAS reference subset was set to 300 stratified questions for cost-efficiency. This sample preserves clean per-stratum analysis (≥ 60 rows per `question_type` bucket) while keeping construction cost under $15. Statistical-significance tests on architecture-level RAGAS scores are reported with this sample size acknowledged."* — saves you from a viva surprise.
 
 ---
 
@@ -249,7 +256,7 @@ Build the `src/` modules in this dependency order before running any of EXP_01�
 8. `src/generation/groq_client.py` — Groq call wrapper with disk cache (key = sha256 of `model + temperature + prompt`) so repeats are free
 9. `src/generation/prompts.py` — base evidence-grounded prompt + No-RAG variant + Multi-Hop prompt
 10. `src/eval/non_llm_metrics.py` — Exact Match, Retrieval Recall@K (against golden `gold_chunks`), MRR, nDCG@K, latency
-11. `src/eval/ragas_eval.py` — wrap the 5 RAGAS metrics with `gpt-4o-mini` as judge; runs only on the 1,000 golden rows
+11. `src/eval/ragas_eval.py` — wrap the 5 RAGAS metrics with **`claude-3-5-sonnet`** as judge; runs only on the 300 golden rows
 12. `src/eval/runner.py` — `run_experiment(retriever, dataset_df, output_dir)` writes `predictions.jsonl`, `retrieval.jsonl`, `summary.json`
 
 ### Run order
@@ -264,7 +271,7 @@ Build the `src/` modules in this dependency order before running any of EXP_01�
 
 **Embedder ablation (Group A only).** EXP_02, EXP_04, EXP_05 are dense-embedding-dependent. Run each one **twice** — once with the BGE-large ChromaDB collection, once with the MedEmbed-large collection — by swapping the `chroma_path` config. EXP_03 (Sparse / BM25) is embedder-agnostic; run once. EXP_01 (No-RAG) doesn't retrieve; run once. Net extra cost: ~3 × 12,723 = ~38k extra Groq calls (~24 h) and ~3 extra RAGAS judge runs (~$15 Claude). Outcome: a 4-arch × 2-embedder ablation table to publish in the methodology section. The **winning embedder is locked for Groups B–E** with one paragraph in the methodology explaining the design.
 
-For each architecture (per embedder run, where applicable): also score against the 1,000 golden rows with full RAGAS. That's 5 architectures × 1,000 RAGAS rows × 5 metrics × ~1.5 (averaged across embedder ablation) ≈ 37,500 Claude Sonnet judge calls ≈ **$50–80**.
+For each architecture (per embedder run, where applicable): also score against the 300 golden rows with full RAGAS. That's 5 architectures × 300 RAGAS rows × 5 metrics × ~1.5 (averaged across embedder ablation) ≈ 11,250 Claude Sonnet judge calls ≈ **$15–25**.
 
 **Tables filled after Phase 4:**
 - **Table 1** Overall Architecture Performance (5 of 6 architecture rows; rows for the dense-retrieval architectures additionally show the BGE/MedEmbed ablation in a sub-row or footnote)
@@ -494,16 +501,16 @@ If every experiment writes its `summary.json` with **exactly the column names fr
 |---|---|---|
 | Phase 1 (EDA) ✓ | 5 min CPU | $0 |
 | Phase 2 (chunk + embed twice + 2× ChromaDB + BM25) | ~50 min CPU | $0 |
-| Phase 3 (golden 1,000) — GPT-4o full | ~4–6 h Colab/local | ~$40 GPT-4o |
+| Phase 3 (golden 300, staged 50 pilot + 250 production) — GPT-4o full | ~1.5–2 h | ~$12 GPT-4o |
 | Phase 4 (Group A · 5 experiments × 12,723, with embedder ablation on the 3 dense-retrieval ones) | ~55–65 h Groq | small, Groq is cheap |
-| Phase 4 RAGAS judge (~5 archs × 1,000 × 5 metrics × ablation factor) | ~5 h | ~$50–80 Claude 3.5 Sonnet |
+| Phase 4 RAGAS judge (~5 archs × 300 × 5 metrics × ablation factor) | ~2 h | ~$15–25 Claude 3.5 Sonnet |
 | Phase 5 (adaptive) | ~10 h Groq | small |
 | Phase 6 (LIME/SHAP, sampled to 200/arch) | ~6–10 h Groq | small |
 | Phase 7 (confidence) | <1 h compute (re-uses prior outputs) | $0 |
 | Phase 8 (taxonomy) | 3 h human + 30 min compute | ~$3 GPT-4o-mini if classifier-assisted |
 | Phase 9 (synthesis) | 30 min | $0 |
 | **Phase 10 (demo UI, optional)** | ~5 days human time, spread A/B/C | $0 (Streamlit Cloud free tier) |
-| **Total** | **~4–5 weeks elapsed (+ ~5 days if Phase 10 taken)** | **~$95–125** |
+| **Total** | **~4–5 weeks elapsed (+ ~5 days if Phase 10 taken)** | **~$30–45** |
 
 The dominant cost is **wall-clock**, not money. Disk-cache every Groq + Claude + GPT-4o response by `(experiment_id, question_id, prompt_hash)` so resuming after a rate-limit pause is free.
 
@@ -535,7 +542,7 @@ You're at the end of Phase 1. Phase 2 unblocks everything else.
 
 1. **Now → next session:** build Notebook 01 (chunking) and Notebook 02 (BGE + MedEmbed embeddings + 2× ChromaDB + BM25). 1 day of work end-to-end including the smoke test in Notebook 03.
 2. **Following session:** build the `src/` skeleton modules (`retrieval/`, `generation/`, `eval/runner.py`).
-3. **Then:** Notebook 04 — golden RAGAS dataset construction (50-row pilot first, then full 1,000). Add `OPENAI_API_KEY` to `.env` first.
+3. **Then:** Notebook 04 — golden RAGAS dataset construction (50-row pilot first ~$2, then 250 more for production = 300 total ~$10). Add `OPENAI_API_KEY` to `.env` first.
 4. **(Optional) Right after Phase 3:** Phase 10 Stage A — Streamlit scaffolding with mock data. **The key reason to do Stage A here**: it forces you to lock `summary.json` shape before any expensive experiment runs, saving rework later.
 5. **Then:** Phase 4 — run EXP_01 → EXP_05 sequentially. Tables 1, 8, 9 fill from these. (UI Stage B wires up incrementally as outputs arrive.)
 6. **Then:** Phase 5 → 6 → 7 → 8 → 9 in order. Each one consumes outputs of the prior.
