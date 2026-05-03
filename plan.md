@@ -13,16 +13,18 @@
 | # | Decision | Value | Why |
 |---|---|---|---|
 | 1 | LLM (generator + reasoner) | **`llama-3.3-70b-versatile`** via Groq Cloud | Proposal §7.5.1; pilot validated; 131k context; free/cheap inference. |
-| 2 | Embedding model | **`BAAI/bge-large-en-v1.5`** | +28 nDCG@10 over MiniLM on TREC-COVID (medical-domain benchmark). 1024-d vectors, 512-token max. Worth the one-time ~25-min index build. |
-| 3 | Vector database | **ChromaDB** (persistent collection) | Built-in persistence + metadata filtering. Pilot showed retrieval quality on par with FAISS at 1/10× the engineering overhead. |
-| 4 | Sparse index | **`rank-bm25`** (Okapi BM25) | Standard medical-IR baseline; pairs with ChromaDB for Hybrid RAG. |
-| 5 | Chunking | **Recursive 400-token chunks, 40-token overlap** | BGE-large supports 512 tokens; 400 leaves room for the special tokens. ~32k chunks total (vs ~70k at 200) — fewer competing chunks, denser context per retrieval. |
+| 2 | Embedding model — **primary** | **`BAAI/bge-large-en-v1.5`** (1024-d, 335M, 512-token max) | Strong general SOTA. Top-tier on MTEB. Open weights, sentence-transformers compatible. |
+| 2a | Embedding model — **ablation** | **`abhinand/MedEmbed-large-v0.1`** (1024-d, 512-token max) | Medical-domain fine-tune. Run alongside BGE-large in **Group A only** to produce a 4-arch × 2-embedder ablation table. Winner is used for Groups B–E. |
+| 3 | Vector database | **ChromaDB** (two persistent collections, one per embedder) | Built-in persistence + metadata filtering. Two collections so we can swap embedders without re-running indexing. |
+| 4 | Sparse index | **`rank-bm25`** (Okapi BM25) | One BM25 index serves both embedder runs (sparse retrieval is embedder-agnostic). |
+| 5 | Chunking | **Recursive 400-token chunks, 80-token overlap** (20%) | 20% overlap is the standard in 2024–25 medical-RAG papers; protects against boundary loss. ~36k chunks. |
 | 6 | Hybrid fusion | Reciprocal Rank Fusion, **k=60** | Proposal §7.6.3; standard. |
 | 7 | Multi-Hop budget | **3 hops max** | Proposal §7.6.4. |
-| 8 | Evaluation surface (full) | **All 12,723 MedQA US questions** | Train + dev + test combined — the canonical benchmark scope per the corrected workbook. |
+| 8 | Evaluation surface (full) | **All 12,723 MedQA US questions** | Train + dev + test combined — canonical benchmark scope per the corrected workbook. |
 | 9 | Golden RAGAS reference subset | **Stratified 1,000 questions** built from scratch | Drives Faithfulness, Context Recall, Context Precision, Answer Correctness on 1,000 rows; the remaining 11,723 still get exact-match accuracy and retrieval recall. |
-| 10 | RAGAS judge LLM | **`gpt-4o-mini`** (different family from LLaMA generator) | Avoids evaluator-on-evaluator bias. Cheap. |
-| 11 | Top-k passed to LLM | **k=5** | Tune in EXP_02 if Context Recall is the bottleneck. |
+| 10 | Golden-set **constructor** LLM | **`gpt-4o`** (full, not mini) — three-pass JSON pipeline | Strict-JSON 3-pass construction needs the stronger model; mini drops more under structured-output stress. ~$40 for 1,000 questions. |
+| 11 | RAGAS **judge** LLM | **`claude-3-5-sonnet`** (Anthropic) — different family from generator AND constructor | Kills evaluator-on-evaluator bias. ~$50–100 across 1,000 golden × 5 metrics × 5 architectures. |
+| 12 | Top-k passed to LLM | **k=5** | Tune in EXP_02 if Context Recall is the bottleneck. |
 
 ---
 
@@ -71,12 +73,14 @@ thesis-project/
 │   │   ├── medqa_4opt.parquet         ✓ from Notebook 00
 │   │   ├── textbook_stats.parquet     ✓ from Notebook 00
 │   │   ├── eda_summary.json           ✓ from Notebook 00
-│   │   ├── chunks.parquet             ← from Notebook 01 (32k rows)
-│   │   ├── embeddings.npy             ← from Notebook 02 (32k × 1024 float32)
-│   │   └── golden_ragas_1000.jsonl    ← from Notebook 04 (built fresh)
+│   │   ├── chunks.parquet             ← from Notebook 01 (~36k rows)
+│   │   ├── embeddings_bge.npy         ← from Notebook 02 (BGE-large, ~36k × 1024 float32)
+│   │   ├── embeddings_medembed.npy    ← from Notebook 02 (MedEmbed-large, ~36k × 1024 float32)
+│   │   └── golden_ragas_1000.jsonl    ← from Notebook 04 (built fresh with GPT-4o)
 │   └── indices/
-│       ├── chroma_textbooks/          ← persistent ChromaDB collection
-│       └── bm25.pkl                   ← pickled rank-bm25 index
+│       ├── chroma_bge/                ← ChromaDB collection (BGE embeddings)
+│       ├── chroma_medembed/           ← ChromaDB collection (MedEmbed embeddings)
+│       └── bm25.pkl                   ← pickled rank-bm25 index (embedder-agnostic)
 ├── src/                               ← reusable Python modules
 │   ├── data/                          (loaders, chunker)
 │   ├── retrieval/                     (naive, sparse, hybrid, multi_hop, adaptive, complexity)
@@ -155,27 +159,29 @@ This phase builds the artefacts every later notebook *loads*. Build them once an
 | Step | Action |
 |---|---|
 | 1 | Load all 18 `medqa-data/textbooks/en/*.txt` into a single concatenated stream, tagging each chunk with its source book name. |
-| 2 | Use `langchain_text_splitters.RecursiveCharacterTextSplitter`: `chunk_size=400` tokens, `chunk_overlap=40` tokens. Use `tiktoken` (cl100k_base) for token counting so chunks size correctly for both BGE input and the LLaMA generator. |
+| 2 | Use `langchain_text_splitters.RecursiveCharacterTextSplitter`: `chunk_size=400` tokens, **`chunk_overlap=80` tokens** (20% overlap — the 2024–25 standard for medical-RAG, protects against boundary loss). Use `tiktoken` (cl100k_base) for token counting so chunks size correctly for both BGE/MedEmbed input and the LLaMA generator. |
 | 3 | For each chunk, store: `chunk_id` (deterministic, e.g. `Pharmacology_Katzung_chunk_00421`), `book_name`, `text`, `n_tokens`, `n_chars`. |
 | 4 | Drop chunks with fewer than 30 tokens (boilerplate / table residue). |
 | 5 | Save `data/processed/chunks.parquet`. Print per-book chunk count + token-distribution histogram to verify chunking is sensible. |
 
-**Acceptance check:** ~28k–35k chunks total, mean ~400 tokens, no chunk >450 tokens, Harrison's still ~25% of chunks (corpus-frequency bias preserved per `docs/dataset/README.md` §3.1).
+**Acceptance check:** ~32k–40k chunks total, mean ~400 tokens, no chunk >450 tokens, Harrison's still ~25% of chunks (corpus-frequency bias preserved per `docs/dataset/README.md` §3.1).
 
 ### Notebook 02 — `02_embeddings_and_indices.ipynb`
 
-**Goal.** Build the dense (BGE-large + ChromaDB) and sparse (BM25) indices that all four retrieval architectures will share.
+**Goal.** Build the dense indices for **both embedders** + the shared sparse (BM25) index that all four retrieval architectures will use.
 
 | Step | Action |
 |---|---|
 | 1 | Load `chunks.parquet`. |
-| 2 | Load `BAAI/bge-large-en-v1.5` via `sentence-transformers`. **Important:** prepend BGE's recommended retrieval-passage prefix (no prefix for passages in v1.5, but use the query prefix `"Represent this sentence for searching relevant passages: "` at *query* time — apply it consistently in `src/retrieval/`). |
-| 3 | Embed all chunks in batches of 32 (M1 Pro CPU ≈ 25 min). Save to `data/processed/embeddings.npy` (float32, 32k × 1024). |
-| 4 | Initialise **persistent** ChromaDB: `chromadb.PersistentClient(path="data/indices/chroma_textbooks")`. Create collection `medqa_textbooks_bge_400` with `metadata={"hnsw:space": "cosine"}`. Add chunks in batches of 1,000 — pass `ids`, `embeddings`, `documents`, and `metadatas={book_name, n_tokens}`. |
-| 5 | Build BM25 index over the same chunk text (tokenised with simple lowercase + word-split). Save as `data/indices/bm25.pkl` alongside the chunk-id ordering. |
-| 6 | Sanity check: query *"What is the first-line treatment for community-acquired pneumonia?"* on both indices. Top-3 from each should clearly relate to pneumonia/antibiotics; if not, debug before proceeding. |
+| 2 | Load `BAAI/bge-large-en-v1.5` via `sentence-transformers`. **Important:** prepend BGE's recommended retrieval-passage prefix (no prefix for passages in v1.5; the query prefix `"Represent this sentence for searching relevant passages: "` is applied at *query* time inside `src/retrieval/`). |
+| 3 | Embed all chunks in batches of 32 (M1 Pro CPU ≈ 25 min). Save to `data/processed/embeddings_bge.npy` (float32, ~36k × 1024). |
+| 4 | Load `abhinand/MedEmbed-large-v0.1` via `sentence-transformers`. No special query prefix required (or use the model card's recommendation if present). |
+| 5 | Embed all chunks again with MedEmbed in batches of 32 (~25 min). Save to `data/processed/embeddings_medembed.npy`. |
+| 6 | Initialise **persistent** ChromaDB and create **two** collections sharing the same chunk IDs: `chromadb.PersistentClient(path="data/indices/chroma_bge")` → collection `medqa_textbooks_bge_400` and `chromadb.PersistentClient(path="data/indices/chroma_medembed")` → collection `medqa_textbooks_medembed_400`. Both with `metadata={"hnsw:space": "cosine"}`. Add chunks in batches of 1,000 — pass `ids`, `embeddings`, `documents`, `metadatas={book_name, n_tokens}`. |
+| 7 | Build BM25 index over the same chunk text (lowercase + simple word-split). Save as `data/indices/bm25.pkl` alongside the chunk-id ordering. **One BM25 index serves both embedder runs** — sparse retrieval is embedder-agnostic. |
+| 8 | Sanity check: query *"What is the first-line treatment for community-acquired pneumonia?"* on all three indices (BGE, MedEmbed, BM25). Top-3 from each should clearly relate to pneumonia/antibiotics; if not, debug before proceeding. |
 
-**Acceptance check:** ChromaDB collection `count()` matches `len(chunks_df)`. BM25 returns sensible top-k for the smoke query. Total disk footprint ≈ 200–400 MB.
+**Acceptance check:** Both ChromaDB collections' `count()` match `len(chunks_df)`. BM25 returns sensible top-k. Total disk footprint ≈ 600–800 MB (two embedder indices). The two collections must contain **identical chunk IDs** so a switch between them at retrieval time is a one-line change.
 
 ### Notebook 03 — `03_smoke_test_pipeline.ipynb`
 
@@ -204,15 +210,17 @@ The full RAGAS suite needs **reference contexts** and **reference answers** that
 |---|---|
 | **A. Stratified sampling — 1,000 of 12,723** | From the 4-option dataset. Stratify across `meta_info` (Step 1 / Step 2&3) × length bucket (≤120 words / 121–200 / >200). Force 200 long-vignette rows so the multi-hop architecture has a fair test surface. Random seed = 42. |
 | **B. Hybrid retrieval per question** | For each sampled row: BGE-large query (with prefix) + BM25 + RRF k=60 → top-10 candidate chunks. Construction-time only: include the gold answer text in the search query (`question + " " + answer + " " + " ".join(metamap_phrases[:8])`). This is *allowed* for golden-set construction (`docs/golden-data/methodology.md` §3) — the bias toward retrieving answer-supporting chunks is the point. |
-| **C. GPT-4o evidence selection (Pass 1)** | Prompt GPT-4o-mini with question + correct answer + 10 candidate passages. Returns: 1–3 strongest supporting passages, 3–8 medical keywords, `is_evidence_sufficient`. Temperature 0, JSON mode. |
-| **D. GPT-4o reference answer (Pass 2)** | Prompt with question + correct answer + selected gold context. Returns: one-sentence `reference_answer`, 3–6 sentence `reference_explanation` grounded in the gold context, `why_other_options_are_less_suitable`, `hallucination_check_points` (atomic claims a faithful generation must cover), `question_type` ∈ {diagnosis, treatment, mechanism, management, other}, `requires_multihop` (yes/no). Temperature 0.2, JSON mode. |
-| **E. GPT-4o validation (Pass 3)** | Score each row 0–5 on evidence relevance, faithfulness, explanation quality. Assess hallucination risk (low/medium/high). Decide `final_status` ∈ {accepted, needs_review, rejected}. Temperature 0, JSON mode. |
+| **C. GPT-4o evidence selection (Pass 1)** | Prompt **`gpt-4o`** (full, not mini) with question + correct answer + 10 candidate passages. Returns: 1–3 strongest supporting passages, 3–8 medical keywords, `is_evidence_sufficient`. Temperature 0, JSON mode. |
+| **D. GPT-4o reference answer (Pass 2)** | Prompt **`gpt-4o`** with question + correct answer + selected gold context. Returns: one-sentence `reference_answer`, 3–6 sentence `reference_explanation` grounded in the gold context, `why_other_options_are_less_suitable`, `hallucination_check_points` (atomic claims a faithful generation must cover), `question_type` ∈ {diagnosis, treatment, mechanism, management, other}, `requires_multihop` (yes/no). Temperature 0.2, JSON mode. |
+| **E. GPT-4o validation (Pass 3)** | Prompt **`gpt-4o`** to score each row 0–5 on evidence relevance, faithfulness, explanation quality. Assess hallucination risk (low/medium/high). Decide `final_status` ∈ {accepted, needs_review, rejected}. Temperature 0, JSON mode. |
 | **F. Automated audit** | Pure-Python checks (no LLM): (i) gold answer text appears in `reference_answer`; (ii) all `evidence_keywords` appear in `gold_context`; (iii) every cited `chunk_id` exists in `chunks.parquet`. Any failure ⇒ `quality_status = "needs_review"`. |
 | **G. Save** | Accepted rows → `golden_ragas_1000.jsonl` (target ≥ 700 accepted; needs_review and rejected to companion files). |
 
-**Cost estimate.** ~1,000 × 3 GPT-4o-mini passes ≈ **$8–12** (GPT-4o-mini is ~30× cheaper than GPT-4o). Wall time ~3–5 hours with reasonable rate-limit handling.
+**Cost estimate.** ~1,000 × 3 GPT-4o passes ≈ **$35–45** (GPT-4o is ~30× pricier than GPT-4o-mini but materially better at strict-JSON multi-pass tasks; the cost on a thesis budget is trivial against the quality lift). Wall time ~4–6 hours with reasonable rate-limit handling.
 
-**Why GPT-4o-mini, not GPT-4o:** the proposal section flagged this is for *RAGAS judging too*. Same model family for both jobs is fine; using a *different* family from the generator (LLaMA) is what matters.
+**Why `gpt-4o` (full) for the constructor:** the 3-pass JSON-strict pipeline depends on reliable structured output and strong reasoning at Pass 2 (where the reference explanation is *generated*, not just judged). GPT-4o-mini drops more under structured-output stress; for a one-time golden-set build we trade ~$35 for materially better reference quality.
+
+**Why a different family for the judge:** the constructor is OpenAI/GPT-4o. The answerer (Phase 4) is LLaMA. The RAGAS judge in Phase 4 is **Claude 3.5 Sonnet** — a third family — to kill evaluator-on-evaluator bias on metrics where the reference answer (constructor output) is consumed by the judge (Context Recall, Context Precision, Answer Correctness).
 
 **Why build from scratch instead of reusing the existing 65-row golden set:** the existing set was built with MiniLM + 200-token chunks against `chunks.parquet` that no longer exists in this fresh build. Rebuilding ensures every `chunk_id` reference is valid against the new BGE/400-token index. The legacy set in `golden-data/` stays as reference but is not consumed.
 
@@ -249,12 +257,15 @@ Build the `src/` modules in this dependency order before running any of EXP_01�
 | EXP_04 | `04d_exp04_hybrid_rag.ipynb` | `hybrid.py` (k=5) | full 12,723 | ~6 h Groq |
 | EXP_05 | `04e_exp05_multi_hop_rag.ipynb` | `multi_hop.py` (≤3 hops, k=5/hop) | full 12,723 | ~12–18 h Groq (3× the calls) |
 
-For each: also score against the 1,000 golden rows with full RAGAS. That's 5 architectures × 1,000 RAGAS rows × 5 metrics = 25,000 GPT-4o-mini judge calls ≈ **$10–15**.
+**Embedder ablation (Group A only).** EXP_02, EXP_04, EXP_05 are dense-embedding-dependent. Run each one **twice** — once with the BGE-large ChromaDB collection, once with the MedEmbed-large collection — by swapping the `chroma_path` config. EXP_03 (Sparse / BM25) is embedder-agnostic; run once. EXP_01 (No-RAG) doesn't retrieve; run once. Net extra cost: ~3 × 12,723 = ~38k extra Groq calls (~24 h) and ~3 extra RAGAS judge runs (~$15 Claude). Outcome: a 4-arch × 2-embedder ablation table to publish in the methodology section. The **winning embedder is locked for Groups B–E** with one paragraph in the methodology explaining the design.
+
+For each architecture (per embedder run, where applicable): also score against the 1,000 golden rows with full RAGAS. That's 5 architectures × 1,000 RAGAS rows × 5 metrics × ~1.5 (averaged across embedder ablation) ≈ 37,500 Claude Sonnet judge calls ≈ **$50–80**.
 
 **Tables filled after Phase 4:**
-- **Table 1** Overall Architecture Performance (5 of 6 architecture rows)
-- **Table 8** Retrieval Quality (4 RAG rows)
+- **Table 1** Overall Architecture Performance (5 of 6 architecture rows; rows for the dense-retrieval architectures additionally show the BGE/MedEmbed ablation in a sub-row or footnote)
+- **Table 8** Retrieval Quality (4 RAG rows; embedder ablation visible)
 - **Table 9** Before/After RAG Comparison
+- **(new methodology table)** Embedder Ablation — 4 RAG architectures × 2 embedders × {Accuracy, Faithfulness, Context Recall} → an 8-row table that justifies the embedder choice for Groups B–E
 
 ---
 
@@ -419,18 +430,20 @@ If every experiment writes its `summary.json` with **exactly the column names fr
 | Phase | Compute | API cost |
 |---|---|---|
 | Phase 1 (EDA) ✓ | 5 min CPU | $0 |
-| Phase 2 (chunk + embed + index) | ~25 min CPU | $0 |
-| Phase 3 (golden 1,000) | ~3–5 h Colab/local | ~$10 GPT-4o-mini |
-| Phase 4 (Group A · 5 experiments × 12,723) | ~30–40 h Groq (mostly waiting on rate limits) | small, Groq is cheap |
-| Phase 4 RAGAS judge (5 archs × 1,000 × 5 metrics) | ~3 h | ~$15 GPT-4o-mini |
+| Phase 2 (chunk + embed twice + 2× ChromaDB + BM25) | ~50 min CPU | $0 |
+| Phase 3 (golden 1,000) — GPT-4o full | ~4–6 h Colab/local | ~$40 GPT-4o |
+| Phase 4 (Group A · 5 experiments × 12,723, with embedder ablation on the 3 dense-retrieval ones) | ~55–65 h Groq | small, Groq is cheap |
+| Phase 4 RAGAS judge (~5 archs × 1,000 × 5 metrics × ablation factor) | ~5 h | ~$50–80 Claude 3.5 Sonnet |
 | Phase 5 (adaptive) | ~10 h Groq | small |
-| Phase 6 (LIME/SHAP, sampled) | ~6–10 h Groq | small |
+| Phase 6 (LIME/SHAP, sampled to 200/arch) | ~6–10 h Groq | small |
 | Phase 7 (confidence) | <1 h compute (re-uses prior outputs) | $0 |
-| Phase 8 (taxonomy) | 3 h human + 30 min compute | ~$2 GPT-4o-mini if classifier-assisted |
+| Phase 8 (taxonomy) | 3 h human + 30 min compute | ~$3 GPT-4o-mini if classifier-assisted |
 | Phase 9 (synthesis) | 30 min | $0 |
-| **Total** | **~3–4 weeks elapsed** | **~$35–50** |
+| **Total** | **~4–5 weeks elapsed** | **~$95–125** |
 
-The dominant cost is **wall-clock**, not money. Disk-cache every Groq response by `(experiment_id, question_id, prompt_hash)` so resuming after a rate-limit pause is free.
+The dominant cost is **wall-clock**, not money. Disk-cache every Groq + Claude + GPT-4o response by `(experiment_id, question_id, prompt_hash)` so resuming after a rate-limit pause is free.
+
+**API key inventory:** `GROQ_API_KEY` (LLaMA generation), `OPENAI_API_KEY` (GPT-4o constructor + optional GPT-4o-mini taxonomy classifier), `ANTHROPIC_API_KEY` (Claude 3.5 Sonnet RAGAS judge).
 
 ---
 

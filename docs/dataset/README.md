@@ -230,7 +230,7 @@ The thesis uses both, for different purposes:
 
 **Why every experiment evaluates on the full 12,723** — exact-match accuracy and retrieval recall don't need reference explanations; they only need `answer_idx` and the retrieved-chunk IDs. So they scale to the full corpus. The 1,000-row golden subset is *only* needed for the RAGAS-suite metrics that demand a reference answer + reference context.
 
-> **Legacy 65-row golden set in [`golden-data/`](../../golden-data/):** built earlier with MiniLM + 200-token chunks. **Not consumed by the from-scratch plan** — the new BGE-large + 400-token chunks would invalidate every `chunk_id` reference in it. Kept as reference material only; see `docs/golden-data/methodology.md` for the construction methodology being re-used.
+> **Legacy 65-row golden set in [`golden-data/`](../../golden-data/):** built earlier with MiniLM + 200-token chunks. **Not consumed by the from-scratch plan** — the new BGE-large + MedEmbed + 400/80-token chunks would invalidate every `chunk_id` reference in it. Kept as reference material only; see `docs/golden-data/methodology.md` for the construction methodology being re-used.
 
 ---
 

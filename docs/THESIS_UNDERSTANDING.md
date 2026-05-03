@@ -79,12 +79,15 @@ BM25(q,d) = Σ_{t ∈ q} IDF(t) · [ f(t,d)·(k1+1) / ( f(t,d) + k1·(1 - b + b�
 
 | Component | Choice | Notes |
 |---|---|---|
-| **LLM** | `llama-3.3-70b-versatile` via **Groq API** | 131k context window. Same model for all 4 architectures. |
-| **Embedding model** | **`BAAI/bge-large-en-v1.5`** (1024-dim, 335M params, 512-token max) | Locked. Strong medical-benchmark performance (~75 nDCG@10 on TREC-COVID vs ~47 for MiniLM). Alternatives MedCPT and all-MiniLM-L6-v2 considered but not selected. |
-| **Vector DB** | **ChromaDB** (persistent collection on disk) | Locked. Built-in persistence + metadata filtering; pilot showed retrieval quality on par with FAISS at this scale. Diverges from proposal §7.4.3 — methodology section will document the substitution. |
-| **Sparse index** | `rank-bm25` (Okapi BM25) | BM25 keyword index built over the same chunks. |
+| **LLM (answerer)** | `llama-3.3-70b-versatile` via **Groq API** | 131k context window. Same model for all 4 architectures. |
+| **Embedding — primary** | **`BAAI/bge-large-en-v1.5`** (1024-d, 335M, 512-token max) | Strong general SOTA. Locked. |
+| **Embedding — ablation** | **`abhinand/MedEmbed-large-v0.1`** (1024-d, 512-token max) | Medical fine-tune. Run alongside BGE in **Group A only** to produce the embedder ablation. Winner used for Groups B–E. |
+| **Vector DB** | **ChromaDB** (two persistent collections, one per embedder) | Built-in persistence + metadata filtering. Diverges from proposal §7.4.3 (FAISS) — methodology section documents the substitution. |
+| **Sparse index** | `rank-bm25` (Okapi BM25) | One index, embedder-agnostic — serves both embedder runs. |
 | **Prompt template** | Single evidence-grounded template (locked across all four architectures) | Multi-Hop uses an extended variant for question decomposition; everything else identical. |
-| **Chunking** | Recursive 400-token chunks, 40-token overlap, dropping <30-token fragments | 400 fits inside BGE-large's 512-token window with headroom; ~32k chunks total. |
+| **Chunking** | Recursive 400-token chunks, **80-token overlap (20%)**, dropping <30-token fragments | 20% overlap is standard in 2024–25 medical-RAG papers. ~36k chunks. |
+| **Golden-set constructor LLM** | `gpt-4o` (OpenAI) — three-pass JSON pipeline | Strict-JSON 3-pass construction; full GPT-4o (not mini) for Pass-2 reference quality. |
+| **RAGAS judge LLM** | `claude-3-5-sonnet` (Anthropic) | Different family from generator (LLaMA) AND constructor (GPT-4o) — kills evaluator-on-evaluator bias. |
 
 ---
 
@@ -257,8 +260,8 @@ The clinical use case: a doctor can see *which textbook passage(s)* the system r
 | Dev environment | Local Python 3.12 venv (`.venv/`) + Jupyter / VSCode | Interactive runs, reproducible env, kernel `thesis-rag` |
 | Lang & data | Python 3.12, Pandas 2.3, NumPy 2.2, PyArrow | Preprocessing, chunk handling, results analysis |
 | LLM & prompts | LangChain, Sentence-Transformers | Prompt flows, retrieval chains, dense embeddings |
-| Retrieval | ChromaDB, rank-bm25 | Dense + sparse retrieval |
-| Inference | LLaMA 3.3 70B via Groq, GPT-4o-mini via OpenAI (judge + golden-set construction) | Answer generation + RAGAS judging |
+| Retrieval | ChromaDB (two collections), rank-bm25 | Dense + sparse retrieval |
+| Inference | LLaMA 3.3 70B via Groq (answerer); GPT-4o via OpenAI (golden-set constructor); Claude 3.5 Sonnet via Anthropic (RAGAS judge) | Three-family separation kills evaluator bias |
 | Eval & XAI | RAGAS, LIME, SHAP, scikit-learn | Metrics + explainability |
 | Viz | Matplotlib, Seaborn | Plots & comparison charts |
 | VC | Git, GitHub | Repo management |
