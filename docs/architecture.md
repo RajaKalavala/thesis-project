@@ -44,8 +44,8 @@ Five rules. Everything else follows from these.
                                  ▲
 ┌──────────────────────────────────────────────────────────────────────┐
 │  L2 — Infrastructure layer (built once, persisted on disk)           │
-│  data/processed/{chunks,embeddings_bge,embeddings_medembed,golden}   │
-│  data/indices/{chroma_bge,chroma_medembed,bm25.pkl}                  │
+│  data/processed/{chunks,embeddings,golden_ragas_300}                 │
+│  data/indices/{chroma_textbooks,bm25.pkl}                            │
 │  data/cache/ — every LLM response keyed by (model, temp, prompt_hash)│
 └──────────────────────────────────────────────────────────────────────┘
                                  ▲
@@ -73,7 +73,7 @@ src/
 ├── retrieval/
 │   ├── base.py                # Retriever ABC: retrieve(q, k) -> list[Chunk]
 │   ├── none.py                # for EXP_01 No-RAG
-│   ├── naive.py               # ChromaDB top-k (BGE OR MedEmbed via config)
+│   ├── naive.py               # ChromaDB top-k (BGE-large)
 │   ├── sparse.py              # BM25 top-k
 │   ├── hybrid.py              # RRF fusion of naive + sparse
 │   ├── multi_hop.py           # 3-hop iterative
@@ -151,13 +151,11 @@ class BaseConfig:
     answerer_temp: float = 0.0
     answerer_max_tokens: int = 700
 
-    embedder_primary: str = "BAAI/bge-large-en-v1.5"
-    embedder_ablation: str = "abhinand/MedEmbed-large-v0.1"
+    embedder_model: str = "BAAI/bge-large-en-v1.5"
     chunk_size_tokens: int = 400
     chunk_overlap_tokens: int = 80
 
-    chroma_path_bge: Path = Path("data/indices/chroma_bge")
-    chroma_path_medembed: Path = Path("data/indices/chroma_medembed")
+    chroma_path: Path = Path("data/indices/chroma_textbooks")
     bm25_path: Path = Path("data/indices/bm25.pkl")
 
     top_k_retrieval: int = 5
@@ -171,7 +169,6 @@ class BaseConfig:
 class ExperimentConfig:
     base: BaseConfig
     experiment_id: str
-    embedder_in_use: str   # "bge" or "medembed"
     output_dir: Path
 ```
 
@@ -182,8 +179,8 @@ Cons: changing a value means editing Python.
 
 ```
 configs/base.yaml
-configs/exp_02_naive_bge.yaml
-configs/exp_02_naive_medembed.yaml
+configs/exp_02_naive.yaml
+configs/exp_04_hybrid.yaml
 ...
 ```
 
@@ -205,8 +202,7 @@ medqa-data/textbooks/en/*.txt              ──► Notebook 00 ──► textb
                                                                        │
                                           ┌────────────────────────────┼─────────────────────────────┐
                                           ▼                            ▼                             ▼
-                                Notebook 02 ──► embeddings_bge.npy   ──► chroma_bge/        ──► bm25.pkl
-                                Notebook 02 ──► embeddings_medembed  ──► chroma_medembed/
+                                Notebook 02 ──► embeddings.npy       ──► chroma_textbooks/  ──► bm25.pkl
                                                                        │
                                                                        ▼
                                                           Notebook 04 ──► golden_ragas_300.jsonl
@@ -325,7 +321,7 @@ When you're about to launch a 6-hour Groq run:
 
 ## 8. Hardware split — M1 Pro 16 GB vs Google Colab
 
-> **TL;DR for hardware:** the **M1 Pro can do almost everything**. Colab is genuinely useful for **exactly one** task: the one-time dual-embedder sweep (~50–70 min local → ~10 min on Colab T4). For the API-bound work that dominates this thesis, Colab gives you nothing.
+> **TL;DR for hardware:** the **M1 Pro does everything**. Colab gives you nothing for this thesis — every heavy workload is API-bound (Groq / OpenAI / Anthropic). The one task that benefits from a GPU is embedding the 36k chunks once (~25 min on M1 Pro CPU, ~12 min on MPS, ~5 min on Colab T4) — not worth the Colab setup overhead.
 
 ### 8.1 What runs on M1 Pro — and how
 
@@ -351,8 +347,7 @@ When you're about to launch a 6-hour Groq run:
 
 | Task | Local M1 Pro | Colab T4 (free) | Worth Colab? |
 |---|---|---|---|
-| BGE-large embed 36k chunks | 25–35 min CPU / 10–15 min MPS | ~5 min | **Yes if you have Drive set up — saves ~30 min once** |
-| MedEmbed-large embed 36k chunks | Same as BGE | ~5 min | **Yes — same logic** |
+| BGE-large embed 36k chunks (one-time) | 25–35 min CPU / ~12 min MPS | ~5 min | **No — the setup overhead exceeds the speedup** |
 | Anything else in this thesis | Already API-bound or trivially CPU-bound | Same speed (Colab CPU ≈ M1 Pro CPU); GPU unused for API calls | **No** |
 
 **Colab pitfalls:**
@@ -361,7 +356,7 @@ When you're about to launch a 6-hour Groq run:
 - Colab Pro is $10/month if you genuinely need it, but for this thesis **you don't**.
 - Colab + Drive + your local repo = three places where files can drift out of sync. Sync discipline matters.
 
-**My recommendation:** keep the work on the M1 Pro. If you happen to be running Colab anyway, optionally do the dual embedding sweep there for the speedup. Otherwise just embed locally — 50–70 min total is fine for a one-time job.
+**My recommendation:** keep all work on the M1 Pro. With MPS enabled, embedding is ~12 min — just run it locally and move on.
 
 ### 8.3 Apple MPS (the M1 Pro GPU) — when to enable it
 
@@ -390,14 +385,12 @@ Practical headroom during heavy work:
 | VS Code + extensions + Cursor | ~1 GB | |
 | Browser (Chrome/Safari, ~5 tabs) | ~1.5 GB | Close tabs you don't need |
 | Jupyter kernel + pandas + chunks.parquet | ~1 GB | |
-| Embedding model in RAM (BGE-large OR MedEmbed) | ~1.3 GB | **Load one at a time, not both** |
+| Embedding model in RAM (BGE-large) | ~1.3 GB | Loaded once during Notebook 02 |
 | ChromaDB collection in RAM | ~0.5 GB | |
 | Headroom for batch tensors during encoding | ~2 GB | At batch size 32, should be safe |
 | **Peak total** | **~10 GB** | **6 GB safety margin** |
 
-Tight but workable. Two saving graces:
-1. **Don't** load both embedders simultaneously. Embed with BGE → save → unload → load MedEmbed → embed → save.
-2. **Don't** keep a full 16 GB Chrome session open during embedding runs. Quit it.
+Comfortable. One saving grace: don't keep a full 16 GB Chrome session open during embedding runs. Quit it.
 
 If you find yourself swapping (Activity Monitor → Memory → Memory Pressure goes yellow/red), close apps. M1 Pro's swap is fast but it'll still slow embedding by ~3× under pressure.
 

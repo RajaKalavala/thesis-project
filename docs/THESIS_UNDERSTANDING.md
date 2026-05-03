@@ -80,10 +80,9 @@ BM25(q,d) = Σ_{t ∈ q} IDF(t) · [ f(t,d)·(k1+1) / ( f(t,d) + k1·(1 - b + b�
 | Component | Choice | Notes |
 |---|---|---|
 | **LLM (answerer)** | `llama-3.3-70b-versatile` via **Groq API** | 131k context window. Same model for all 4 architectures. |
-| **Embedding — primary** | **`BAAI/bge-large-en-v1.5`** (1024-d, 335M, 512-token max) | Strong general SOTA. Locked. |
-| **Embedding — ablation** | **`abhinand/MedEmbed-large-v0.1`** (1024-d, 512-token max) | Medical fine-tune. Run alongside BGE in **Group A only** to produce the embedder ablation. Winner used for Groups B–E. |
-| **Vector DB** | **ChromaDB** (two persistent collections, one per embedder) | Built-in persistence + metadata filtering. Diverges from proposal §7.4.3 (FAISS) — methodology section documents the substitution. |
-| **Sparse index** | `rank-bm25` (Okapi BM25) | One index, embedder-agnostic — serves both embedder runs. |
+| **Embedding** | **`BAAI/bge-large-en-v1.5`** (1024-d, 335M, 512-token max) | Locked. Strong general SOTA, ~75 nDCG@10 on TREC-COVID. A medical-fine-tuned ablation (e.g. MedEmbed-large) was scoped out for compute budget and is identified as future work in the writeup. |
+| **Vector DB** | **ChromaDB** (one persistent collection) | Built-in persistence + metadata filtering. Diverges from proposal §7.4.3 (FAISS) — methodology section documents the substitution. |
+| **Sparse index** | `rank-bm25` (Okapi BM25) | Standard medical-IR baseline; pairs with ChromaDB for Hybrid RAG. |
 | **Prompt template** | Single evidence-grounded template (locked across all four architectures) | Multi-Hop uses an extended variant for question decomposition; everything else identical. |
 | **Chunking** | Recursive 400-token chunks, **80-token overlap (20%)**, dropping <30-token fragments | 20% overlap is standard in 2024–25 medical-RAG papers. ~36k chunks. |
 | **Golden-set constructor LLM** | `gpt-4o` (OpenAI) — three-pass JSON pipeline | Strict-JSON 3-pass construction; full GPT-4o (not mini) for Pass-2 reference quality. |

@@ -145,7 +145,7 @@ Walking through the warfarin example:
 
 When the user later asks "What's a NSAID?", the question itself gets a fingerprint, and the system finds chunks whose fingerprints are *closest* to it. Chunks A and B will pop up; C won't.
 
-**Why two embedders?** You're using two — `BGE-large-en-v1.5` (general-purpose) and `MedEmbed-large-v0.1` (medical fine-tuned). The thesis will compare which one retrieves better passages on medical text. This becomes a row in your thesis results: *"For medical RAG, the medical-fine-tuned embedder gave +X points on retrieval recall."*
+**Why this embedder?** `BGE-large-en-v1.5` is a strong general-purpose 1024-d embedder that scores ~75 nDCG@10 on TREC-COVID (a medical-IR benchmark). A medical-fine-tuned ablation (e.g. MedEmbed-large) was scoped out of this thesis for compute-budget reasons and is identified as future work in the writeup.
 
 **Why two databases?** ChromaDB stores the fingerprints for fast similarity search. BM25 stores the raw words for keyword search. Naive uses ChromaDB; Sparse uses BM25; Hybrid uses both.
 
@@ -186,7 +186,7 @@ When the user later asks "What's a NSAID?", the question itself gets a fingerpri
 - The RAGAS scores (Faithfulness etc.)
 - How long it took
 
-For the 3 dense-retrieval chefs (Naive, Hybrid, Multi-Hop), run them **twice** — once with BGE embedder, once with MedEmbed. That's the embedder ablation.
+All 5 chefs use the same BGE-large embedder; you run each one once. (An earlier plan considered running the dense-retrieval chefs twice with a medical-fine-tuned embedder — that was dropped to keep compute manageable, and is identified as future work.)
 
 **Why this is the main event.** This is where you generate the data that fills 5 of the 12 results tables.
 
@@ -265,7 +265,7 @@ This is **Table 12** — the crown of the thesis.
 The thesis chapters lift directly from these documents:
 - **Methodology chapter** ← `plan.md` + `architecture.md` + `dataset/README.md`
 - **Results chapter** ← the 12 + 1 results tables you've populated
-- **Discussion** ← what each architecture's failure pattern means + the embedder ablation finding + LIME/SHAP findings + the hallucination taxonomy
+- **Discussion** ← what each architecture's failure pattern means + LIME/SHAP findings + the hallucination taxonomy
 - **Conclusion** ← one paragraph per use case from Table 12
 
 Optionally: build a Streamlit demo UI so the viva examiner can *see* the architectures comparing answers side-by-side, instead of reading numbers in tables. (See `plan.md` §12 for the optional Phase 10.)
@@ -304,21 +304,20 @@ Here's a *fictional* version of what your final Table 12 might look like (real n
 | Naive RAG (BGE) | 0.74 | 0.71 | 18% | 1.8 s | 0.69 | Low-cost simple lookups |
 | Sparse RAG | 0.69 | 0.78 | 12% | 1.6 s | 0.69 | Exact-term medical queries |
 | Hybrid RAG (BGE) | 0.78 | 0.82 | 9% | 2.1 s | 0.76 | Balanced retrieval |
-| Hybrid RAG (MedEmbed) | 0.82 | 0.84 | 7% | 2.1 s | 0.79 | Best dense+sparse on medical text |
-| Multi-Hop RAG (MedEmbed) | 0.81 | 0.85 | 7% | 5.4 s | 0.78 | Complex multi-step reasoning |
+| Hybrid RAG | 0.78 | 0.82 | 9% | 2.1 s | 0.76 | Balanced retrieval |
+| Multi-Hop RAG | 0.81 | 0.85 | 7% | 5.4 s | 0.78 | Complex multi-step reasoning |
 | **Adaptive RAG** | **0.79** | **0.83** | **8%** | **2.6 s** | **0.78** | **Production deployment** |
 
 From this one table, your thesis defends:
 
 1. **RAG dramatically reduces hallucinations** — No-RAG hallucinates on 38% of answers; the best RAG drops it to 7%.
 2. **Architecture choice matters** — there's a 19-point spread between worst and best RAG.
-3. **The medical embedder helped** — MedEmbed > BGE on dense retrieval architectures (this fills your embedder-ablation row).
-4. **Multi-Hop wins on accuracy but at 3× the latency** — the trade-off is real and quantified.
-5. **Adaptive routing is the practical winner** — within 1 point of the best fixed architecture but at half the latency.
-6. **Confidence rejection halves hallucinations** — separate Table 11 result.
-7. **Each architecture has signature failure modes** — separate Table 7 result (the taxonomy).
+3. **Multi-Hop wins on accuracy but at 3× the latency** — the trade-off is real and quantified.
+4. **Adaptive routing is the practical winner** — within 1 point of the best fixed architecture but at half the latency.
+5. **Confidence rejection halves hallucinations** — separate Table 11 result.
+6. **Each architecture has signature failure modes** — separate Table 7 result (the taxonomy).
 
-That's 7 thesis-defensible claims from one experiment programme. Plus the methodological contribution: *"This is the first controlled, single-variable comparison of multiple RAG architectures on a medical benchmark covering accuracy + hallucination + explainability simultaneously."*
+That's 6 thesis-defensible claims from one experiment programme. Plus the methodological contribution: *"This is the first controlled, single-variable comparison of multiple RAG architectures on a medical benchmark covering accuracy + hallucination + explainability simultaneously."*
 
 ---
 
@@ -333,7 +332,7 @@ That's 7 thesis-defensible claims from one experiment programme. Plus the method
                                  ▼
             ┌─────────────────────────────────────────┐
             │  Step 2: Chunking — cut into ~36k cards │
-            │  Step 3: Embed × 2 (BGE + MedEmbed)     │
+            │  Step 3: Embed with BGE-large           │
             │          + BM25 keyword index           │
             └──────────────┬──────────────────────────┘
                            │
@@ -382,7 +381,7 @@ You're done with the project when:
 
 1. ☐ All 12 + 1 results tables in the Excel workbook are filled
 2. ☐ Every claim in the thesis traces back to a specific row in a results table or a specific notebook output
-3. ☐ The thesis methodology section explains: why these 4 architectures, why this dataset, why this LLM, why two embedders, why Claude as judge, why 300 golden, why 80-token overlap
+3. ☐ The thesis methodology section explains: why these 4 architectures, why this dataset, why this LLM, why this embedder (BGE-large + future-work caveat), why Claude as judge, why 300 golden, why 80-token overlap
 4. ☐ The discussion chapter has at least 5 distinct findings (one per claim listed in §6 above)
 5. ☐ You can answer in the viva: *"What would you change if you started over?"* with a thoughtful answer (not "nothing")
 6. ☐ (Optional) Streamlit demo runs at a public URL and you can demo it in the viva

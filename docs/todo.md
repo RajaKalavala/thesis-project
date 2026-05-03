@@ -43,15 +43,12 @@
 
 ### 2.2 Notebook 02 — `notebooks/02_embeddings_and_indices.ipynb`
 
-- [ ] Embed all chunks with **`BAAI/bge-large-en-v1.5`** (sentence-transformers; batch 32; M1 Pro CPU ≈ 25 min)
-  - Saves `data/processed/embeddings_bge.npy`
-- [ ] Embed all chunks with **`abhinand/MedEmbed-large-v0.1`** (same batching)
-  - Saves `data/processed/embeddings_medembed.npy`
-- [ ] Build ChromaDB collection `medqa_textbooks_bge_400` at `data/indices/chroma_bge/` (cosine HNSW, metadata = `{book_name, n_tokens}`)
-- [ ] Build ChromaDB collection `medqa_textbooks_medembed_400` at `data/indices/chroma_medembed/`
-- [ ] Build BM25 index at `data/indices/bm25.pkl` (one index, embedder-agnostic)
-- [ ] Smoke query *"What is the first-line treatment for community-acquired pneumonia?"* → top-3 from all 3 indices clearly relate to pneumonia/antibiotics
-- **Deliverable:** all three indices on disk; both ChromaDB collections' `count()` matches `len(chunks_df)`
+- [ ] Embed all chunks with **`BAAI/bge-large-en-v1.5`** (sentence-transformers; batch 32; M1 Pro CPU ≈ 25 min, MPS ≈ 12 min)
+  - Saves `data/processed/embeddings.npy`
+- [ ] Build ChromaDB collection `medqa_textbooks_bge_400` at `data/indices/chroma_textbooks/` (cosine HNSW, metadata = `{book_name, n_tokens}`)
+- [ ] Build BM25 index at `data/indices/bm25.pkl`
+- [ ] Smoke query *"What is the first-line treatment for community-acquired pneumonia?"* → top-3 from both indices (ChromaDB dense + BM25 sparse) clearly relate to pneumonia/antibiotics
+- **Deliverable:** both indices on disk; ChromaDB collection's `count()` matches `len(chunks_df)`
 
 ### 2.3 Notebook 03 — `notebooks/03_smoke_test_pipeline.ipynb`
 
@@ -68,7 +65,7 @@ Build in this dependency order. Add a 3-question unit test against `chunks.parqu
 
 - [ ] `src/data/loaders.py` — load parquet + golden JSONL
 - [ ] `src/data/chunker.py` — recursive 400/80 chunker (called by Notebook 01)
-- [ ] `src/data/indices.py` — load BGE / MedEmbed / BM25 from disk
+- [ ] `src/data/indices.py` — load ChromaDB (BGE) and BM25 from disk
 - [ ] `src/retrieval/base.py` — `Retriever` ABC: `retrieve(q: str, k: int) -> list[Chunk]`
 - [ ] `src/retrieval/none.py` — returns `[]` (for EXP_01)
 - [ ] `src/retrieval/naive.py` — ChromaDB top-k with BGE query prefix
@@ -118,35 +115,34 @@ For each experiment: write `notebooks/04*_exp0*_*.ipynb`, run on full **12,723**
 ### EXP_02 — Naive RAG (dense ChromaDB top-k)
 
 - [ ] Notebook `04b_exp02_naive_rag.ipynb`
-- [ ] **Run twice — once with BGE, once with MedEmbed** (embedder ablation)
-- [ ] Outputs to `results/exp_02_naive_rag/{bge,medembed}/`
-- [ ] Metrics: + RAGAS suite + Retrieval Recall@K + latency
-- **Tables touched:** Table 1, Table 8, Table 9, Embedder Ablation table
+- [ ] Run on full 12,723 with the BGE-large ChromaDB collection
+- [ ] Outputs to `results/exp_02_naive_rag/`
+- [ ] Metrics: Exact Match Accuracy + RAGAS suite (on golden 300) + Retrieval Recall@K + latency
+- **Tables touched:** Table 1, Table 8, Table 9
 
 ### EXP_03 — Sparse RAG (BM25)
 
 - [ ] Notebook `04c_exp03_sparse_rag.ipynb`
-- [ ] Run **once** (BM25 is embedder-agnostic)
+- [ ] Run on full 12,723 with the BM25 index
 - **Tables touched:** Table 1, Table 8, Table 9
 
 ### EXP_04 — Hybrid RAG (RRF)
 
 - [ ] Notebook `04d_exp04_hybrid_rag.ipynb`
-- [ ] **Run twice — once with BGE, once with MedEmbed** (embedder ablation)
-- **Tables touched:** Table 1, Table 8, Table 9, Embedder Ablation table
+- [ ] Run on full 12,723 — BGE + BM25 fused with RRF k=60
+- **Tables touched:** Table 1, Table 8, Table 9
 
 ### EXP_05 — Multi-Hop RAG
 
 - [ ] Notebook `04e_exp05_multi_hop_rag.ipynb`
-- [ ] **Run twice — once with BGE, once with MedEmbed**
+- [ ] Run on full 12,723 — BGE-large dense retrieval per hop
 - [ ] Hop budget = 3, k=5 per hop, terminate on no-new-chunks
-- **Tables touched:** Table 1, Table 8, Table 9, Embedder Ablation table
+- **Tables touched:** Table 1, Table 8, Table 9
 
 ### After Group A finishes
 
-- [ ] Pick winning embedder for Groups B–E based on the ablation table
-- [ ] Document the choice in one paragraph in the methodology section
-- **Deliverable:** Tables 1, 8, 9 fully populated for the 4 baseline RAGs + No-RAG; Embedder Ablation table populated for EXP_02/04/05
+- [ ] Document the BGE-large embedder choice in the methodology section (one paragraph; cite TREC-COVID nDCG@10 benchmark; flag domain-fine-tuned ablation as future work)
+- **Deliverable:** Tables 1, 8, 9 fully populated for the 4 baseline RAGs + No-RAG
 
 ---
 
@@ -301,7 +297,6 @@ When all 16 experiments are done:
 - [ ] Table 10 — Adaptive vs Best Fixed (8 rows)
 - [ ] Table 11 — Confidence Threshold Tuning (5 rows)
 - [ ] Table 12 — Final Weighted Ranking (6 rows)
-- [ ] **(new)** Embedder Ablation table — 4 archs × 2 embedders × 3 metrics = 8 rows
 - **Deliverable:** every cell either filled or marked "N/A"
 
 ---
@@ -309,8 +304,8 @@ When all 16 experiments are done:
 ## 12 · Thesis writing
 
 - [ ] Methodology chapter — lift from `plan.md`, `docs/THESIS_UNDERSTANDING.md`, `docs/dataset/README.md`, golden-data methodology
-- [ ] Results chapter — driven by the 12 + 1 results tables, with per-stratum breakdowns (`meta_info`, `question_type`, `requires_multihop`)
-- [ ] Discussion — what each architecture's failure mode means, the embedder ablation finding, the LIME/SHAP agreement story, the hallucination taxonomy as a contribution
+- [ ] Results chapter — driven by the 12 results tables, with per-stratum breakdowns (`meta_info`, `question_type`, `requires_multihop`)
+- [ ] Discussion — what each architecture's failure mode means, the LIME/SHAP agreement story, the hallucination taxonomy as a contribution
 - [ ] Limitations — corpus bias (Harrison's 25%), single-LLM, English-only, 18-textbook KB
 - [ ] References — keep BibTeX synced as you write
 - [ ] Final thesis draft → supervisor review → revisions → submission
@@ -327,7 +322,7 @@ When all 16 experiments are done:
 | 2026-05-03 | 400-token chunks (initially 40 overlap) | plan.md §0 #5 | BGE 512-token max headroom |
 | 2026-05-03 | Evaluate full 12,723 (not 1,500 subset) | plan.md §0 #8 | EDA showed canonical MedQA size |
 | 2026-05-03 | **80-token (20%) overlap** instead of 40 | plan.md §0 #5 | 2024–25 medical-RAG standard, boundary-loss protection |
-| 2026-05-03 | **MedEmbed-large as ablation embedder** | plan.md §0 #2a | Defends against "general embedder on medical data" methodology hole |
+| 2026-05-03 | ~~MedEmbed-large as ablation embedder~~ → **DROPPED, BGE-large only** | plan.md §0 #2 | **Reversed same day.** Single-embedder design saves ~24 h Groq + ~$8 RAGAS judging. Methodology defends BGE-large via TREC-COVID nDCG@10 benchmark; identifies medical-fine-tuned ablation as future work. |
 | 2026-05-03 | **GPT-4o (full) for golden constructor** | plan.md §0 #10 | 3-pass JSON-strict reliability |
 | 2026-05-03 | **Claude 3.5 Sonnet as RAGAS judge** | plan.md §0 #11 | Different family from generator + constructor |
 | 2026-05-03 | **Phase 10 — Demo UI accepted as optional parallel track** | plan.md §12 (Phase 10) | Cached-only mode, 4 tabs, Streamlit. Build only if time permits; drop if experiments slip. Schema-lock in Stage A protects against rework. |

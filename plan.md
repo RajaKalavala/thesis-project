@@ -13,17 +13,16 @@
 | # | Decision | Value | Why |
 |---|---|---|---|
 | 1 | LLM (generator + reasoner) | **`llama-3.3-70b-versatile`** via Groq Cloud | Proposal §7.5.1; pilot validated; 131k context; free/cheap inference. |
-| 2 | Embedding model — **primary** | **`BAAI/bge-large-en-v1.5`** (1024-d, 335M, 512-token max) | Strong general SOTA. Top-tier on MTEB. Open weights, sentence-transformers compatible. |
-| 2a | Embedding model — **ablation** | **`abhinand/MedEmbed-large-v0.1`** (1024-d, 512-token max) | Medical-domain fine-tune. Run alongside BGE-large in **Group A only** to produce a 4-arch × 2-embedder ablation table. Winner is used for Groups B–E. |
-| 3 | Vector database | **ChromaDB** (two persistent collections, one per embedder) | Built-in persistence + metadata filtering. Two collections so we can swap embedders without re-running indexing. |
-| 4 | Sparse index | **`rank-bm25`** (Okapi BM25) | One BM25 index serves both embedder runs (sparse retrieval is embedder-agnostic). |
+| 2 | Embedding model | **`BAAI/bge-large-en-v1.5`** (1024-d, 335M, 512-token max) | Strong general SOTA. Top-tier on MTEB; ~75 nDCG@10 on TREC-COVID (medical-IR benchmark). Open weights, sentence-transformers compatible. **A medical-fine-tuned ablation (e.g. MedEmbed-large) was scoped out for compute budget — identified as future work in the writeup.** |
+| 3 | Vector database | **ChromaDB** (one persistent collection) | Built-in persistence + metadata filtering. |
+| 4 | Sparse index | **`rank-bm25`** (Okapi BM25) | Standard medical-IR baseline; pairs with ChromaDB for Hybrid RAG. |
 | 5 | Chunking | **Recursive 400-token chunks, 80-token overlap** (20%) | 20% overlap is the standard in 2024–25 medical-RAG papers; protects against boundary loss. ~36k chunks. |
 | 6 | Hybrid fusion | Reciprocal Rank Fusion, **k=60** | Proposal §7.6.3; standard. |
 | 7 | Multi-Hop budget | **3 hops max** | Proposal §7.6.4. |
 | 8 | Evaluation surface (full) | **All 12,723 MedQA US questions** | Train + dev + test combined — canonical benchmark scope per the corrected workbook. |
 | 9 | Golden RAGAS reference subset | **Stratified 300 questions** built from scratch in two stages: 50-row smoke pilot → 250 more for production (= 300 total) | Drives Faithfulness, Context Recall, Context Precision, Answer Correctness on 300 rows; the remaining 12,423 still get exact-match accuracy and retrieval recall. Sized for cost-efficiency while preserving per-stratum analysis room (≥ 60 rows per `question_type` bucket). |
 | 10 | Golden-set **constructor** LLM | **`gpt-4o`** (full, not mini) — three-pass JSON pipeline | Strict-JSON 3-pass construction needs the stronger model; mini drops more under structured-output stress. ~$12 for 300 questions. |
-| 11 | RAGAS **judge** LLM | **`claude-3-5-sonnet`** (Anthropic) — different family from generator AND constructor | Kills evaluator-on-evaluator bias. ~$15–25 across 300 golden × 5 metrics × 5 architectures (more if embedder ablation expands). |
+| 11 | RAGAS **judge** LLM | **`claude-3-5-sonnet`** (Anthropic) — different family from generator AND constructor | Kills evaluator-on-evaluator bias. ~$10–15 across 300 golden × 5 metrics × 5 architectures. |
 | 12 | Top-k passed to LLM | **k=5** | Tune in EXP_02 if Context Recall is the bottleneck. |
 
 ---
@@ -79,14 +78,12 @@ thesis-project/
 │   │   ├── textbook_stats.parquet     ✓ from Notebook 00
 │   │   ├── eda_summary.json           ✓ from Notebook 00
 │   │   ├── chunks.parquet             ← from Notebook 01 (~36k rows)
-│   │   ├── embeddings_bge.npy         ← from Notebook 02 (BGE-large, ~36k × 1024 float32)
-│   │   ├── embeddings_medembed.npy    ← from Notebook 02 (MedEmbed-large, ~36k × 1024 float32)
+│   │   ├── embeddings.npy             ← from Notebook 02 (BGE-large, ~36k × 1024 float32)
 │   │   ├── golden_ragas_50_pilot.jsonl   ← from Notebook 04 stage 1 (smoke pilot, ~$2)
 │   │   └── golden_ragas_300.jsonl        ← from Notebook 04 stage 2 (production, +~$10)
 │   └── indices/
-│       ├── chroma_bge/                ← ChromaDB collection (BGE embeddings)
-│       ├── chroma_medembed/           ← ChromaDB collection (MedEmbed embeddings)
-│       └── bm25.pkl                   ← pickled rank-bm25 index (embedder-agnostic)
+│       ├── chroma_textbooks/          ← ChromaDB collection (BGE-large embeddings)
+│       └── bm25.pkl                   ← pickled rank-bm25 index
 ├── src/                               ← reusable Python modules
 │   ├── data/                          (loaders, chunker)
 │   ├── retrieval/                     (naive, sparse, hybrid, multi_hop, adaptive, complexity)
@@ -165,7 +162,7 @@ This phase builds the artefacts every later notebook *loads*. Build them once an
 | Step | Action |
 |---|---|
 | 1 | Load all 18 `medqa-data/textbooks/en/*.txt` into a single concatenated stream, tagging each chunk with its source book name. |
-| 2 | Use `langchain_text_splitters.RecursiveCharacterTextSplitter`: `chunk_size=400` tokens, **`chunk_overlap=80` tokens** (20% overlap — the 2024–25 standard for medical-RAG, protects against boundary loss). Use `tiktoken` (cl100k_base) for token counting so chunks size correctly for both BGE/MedEmbed input and the LLaMA generator. |
+| 2 | Use `langchain_text_splitters.RecursiveCharacterTextSplitter`: `chunk_size=400` tokens, **`chunk_overlap=80` tokens** (20% overlap — the 2024–25 standard for medical-RAG, protects against boundary loss). Use `tiktoken` (cl100k_base) for token counting so chunks size correctly for both BGE input and the LLaMA generator. |
 | 3 | For each chunk, store: `chunk_id` (deterministic, e.g. `Pharmacology_Katzung_chunk_00421`), `book_name`, `text`, `n_tokens`, `n_chars`. |
 | 4 | Drop chunks with fewer than 30 tokens (boilerplate / table residue). |
 | 5 | Save `data/processed/chunks.parquet`. Print per-book chunk count + token-distribution histogram to verify chunking is sensible. |
@@ -174,20 +171,18 @@ This phase builds the artefacts every later notebook *loads*. Build them once an
 
 ### Notebook 02 — `02_embeddings_and_indices.ipynb`
 
-**Goal.** Build the dense indices for **both embedders** + the shared sparse (BM25) index that all four retrieval architectures will use.
+**Goal.** Build the dense (BGE-large + ChromaDB) and sparse (BM25) indices that all four retrieval architectures will share.
 
 | Step | Action |
 |---|---|
 | 1 | Load `chunks.parquet`. |
 | 2 | Load `BAAI/bge-large-en-v1.5` via `sentence-transformers`. **Important:** prepend BGE's recommended retrieval-passage prefix (no prefix for passages in v1.5; the query prefix `"Represent this sentence for searching relevant passages: "` is applied at *query* time inside `src/retrieval/`). |
-| 3 | Embed all chunks in batches of 32 (M1 Pro CPU ≈ 25 min). Save to `data/processed/embeddings_bge.npy` (float32, ~36k × 1024). |
-| 4 | Load `abhinand/MedEmbed-large-v0.1` via `sentence-transformers`. No special query prefix required (or use the model card's recommendation if present). |
-| 5 | Embed all chunks again with MedEmbed in batches of 32 (~25 min). Save to `data/processed/embeddings_medembed.npy`. |
-| 6 | Initialise **persistent** ChromaDB and create **two** collections sharing the same chunk IDs: `chromadb.PersistentClient(path="data/indices/chroma_bge")` → collection `medqa_textbooks_bge_400` and `chromadb.PersistentClient(path="data/indices/chroma_medembed")` → collection `medqa_textbooks_medembed_400`. Both with `metadata={"hnsw:space": "cosine"}`. Add chunks in batches of 1,000 — pass `ids`, `embeddings`, `documents`, `metadatas={book_name, n_tokens}`. |
-| 7 | Build BM25 index over the same chunk text (lowercase + simple word-split). Save as `data/indices/bm25.pkl` alongside the chunk-id ordering. **One BM25 index serves both embedder runs** — sparse retrieval is embedder-agnostic. |
-| 8 | Sanity check: query *"What is the first-line treatment for community-acquired pneumonia?"* on all three indices (BGE, MedEmbed, BM25). Top-3 from each should clearly relate to pneumonia/antibiotics; if not, debug before proceeding. |
+| 3 | Embed all chunks in batches of 32 (M1 Pro CPU ≈ 25 min, MPS ≈ 12 min). Save to `data/processed/embeddings.npy` (float32, ~36k × 1024). |
+| 4 | Initialise **persistent** ChromaDB: `chromadb.PersistentClient(path="data/indices/chroma_textbooks")`. Create collection `medqa_textbooks_bge_400` with `metadata={"hnsw:space": "cosine"}`. Add chunks in batches of 1,000 — pass `ids`, `embeddings`, `documents`, `metadatas={book_name, n_tokens}`. |
+| 5 | Build BM25 index over the same chunk text (lowercase + simple word-split). Save as `data/indices/bm25.pkl` alongside the chunk-id ordering. |
+| 6 | Sanity check: query *"What is the first-line treatment for community-acquired pneumonia?"* on both indices (ChromaDB dense + BM25 sparse). Top-3 from each should clearly relate to pneumonia/antibiotics; if not, debug before proceeding. |
 
-**Acceptance check:** Both ChromaDB collections' `count()` match `len(chunks_df)`. BM25 returns sensible top-k. Total disk footprint ≈ 600–800 MB (two embedder indices). The two collections must contain **identical chunk IDs** so a switch between them at retrieval time is a one-line change.
+**Acceptance check:** ChromaDB collection's `count()` matches `len(chunks_df)`. BM25 returns sensible top-k. Total disk footprint ≈ 200–400 MB.
 
 ### Notebook 03 — `03_smoke_test_pipeline.ipynb`
 
@@ -269,15 +264,14 @@ Build the `src/` modules in this dependency order before running any of EXP_01�
 | EXP_04 | `04d_exp04_hybrid_rag.ipynb` | `hybrid.py` (k=5) | full 12,723 | ~6 h Groq |
 | EXP_05 | `04e_exp05_multi_hop_rag.ipynb` | `multi_hop.py` (≤3 hops, k=5/hop) | full 12,723 | ~12–18 h Groq (3× the calls) |
 
-**Embedder ablation (Group A only).** EXP_02, EXP_04, EXP_05 are dense-embedding-dependent. Run each one **twice** — once with the BGE-large ChromaDB collection, once with the MedEmbed-large collection — by swapping the `chroma_path` config. EXP_03 (Sparse / BM25) is embedder-agnostic; run once. EXP_01 (No-RAG) doesn't retrieve; run once. Net extra cost: ~3 × 12,723 = ~38k extra Groq calls (~24 h) and ~3 extra RAGAS judge runs (~$15 Claude). Outcome: a 4-arch × 2-embedder ablation table to publish in the methodology section. The **winning embedder is locked for Groups B–E** with one paragraph in the methodology explaining the design.
+**Single embedder for the whole thesis.** All five experiments use the same BGE-large ChromaDB collection. EXP_03 (Sparse / BM25) doesn't use the embedder; EXP_01 (No-RAG) doesn't retrieve. The methodology paragraph in the writeup will justify BGE-large based on its TREC-COVID nDCG@10 benchmark and identify a domain-fine-tuned-embedder ablation as future work.
 
-For each architecture (per embedder run, where applicable): also score against the 300 golden rows with full RAGAS. That's 5 architectures × 300 RAGAS rows × 5 metrics × ~1.5 (averaged across embedder ablation) ≈ 11,250 Claude Sonnet judge calls ≈ **$15–25**.
+For each architecture: also score against the 300 golden rows with full RAGAS. That's 5 architectures × 300 RAGAS rows × 5 metrics ≈ 7,500 Claude Sonnet judge calls ≈ **$10–15**.
 
 **Tables filled after Phase 4:**
-- **Table 1** Overall Architecture Performance (5 of 6 architecture rows; rows for the dense-retrieval architectures additionally show the BGE/MedEmbed ablation in a sub-row or footnote)
-- **Table 8** Retrieval Quality (4 RAG rows; embedder ablation visible)
+- **Table 1** Overall Architecture Performance (5 of 6 architecture rows)
+- **Table 8** Retrieval Quality (4 RAG rows)
 - **Table 9** Before/After RAG Comparison
-- **(new methodology table)** Embedder Ablation — 4 RAG architectures × 2 embedders × {Accuracy, Faithfulness, Context Recall} → an 8-row table that justifies the embedder choice for Groups B–E
 
 ---
 
@@ -438,7 +432,7 @@ Rank. Map ranks → deployment recommendation:
 | 1 | **Architecture Battle** *(crown jewel)* | `results/exp_0[2-5]/predictions.jsonl` + `retrieval.jsonl` | Pick a MedQA question → 4 panes side-by-side (Naive / Sparse / Hybrid / Multi-Hop) → each pane: retrieved chunks (collapsible snippets), generated answer, predicted option, ground-truth match badge, RAGAS Faithfulness, latency. Optional 5th pane for Adaptive RAG once EXP_07 is done. |
 | 2 | **Explainability View** | `results/exp_10/lime.jsonl` + `results/exp_11/shap.jsonl` + `results/exp_12/agreement.parquet` | Pick any answered question + architecture → show LIME and SHAP rankings of which retrieved passages drove the answer, with the relevant text highlighted. Show LIME-SHAP top-1 / top-3 agreement. |
 | 3 | **Confidence & Safety** | `results/exp_08/confidence_features.parquet` + `results/exp_09/threshold_sweep.csv` | Slider for the rejection threshold (0.5–0.9) → live update of accept rate, accuracy, hallucination rate. Sample list of rejected questions with the signal that triggered the reject. |
-| 4 | **Results Dashboard** | All `results/exp_*/summary.json` | Interactive versions of the 12 + 1 Excel tables — filter by `complexity`, `question_type`, `requires_multihop`, embedder. Drill down into any cell to see the underlying questions. |
+| 4 | **Results Dashboard** | All `results/exp_*/summary.json` | Interactive versions of the 12 Excel tables — filter by `complexity`, `question_type`, `requires_multihop`. Drill down into any cell to see the underlying questions. |
 
 ### 12.3 Three-stage build
 
@@ -500,17 +494,17 @@ If every experiment writes its `summary.json` with **exactly the column names fr
 | Phase | Compute | API cost |
 |---|---|---|
 | Phase 1 (EDA) ✓ | 5 min CPU | $0 |
-| Phase 2 (chunk + embed twice + 2× ChromaDB + BM25) | ~50 min CPU | $0 |
+| Phase 2 (chunk + embed once + ChromaDB + BM25) | ~25 min CPU | $0 |
 | Phase 3 (golden 300, staged 50 pilot + 250 production) — GPT-4o full | ~1.5–2 h | ~$12 GPT-4o |
-| Phase 4 (Group A · 5 experiments × 12,723, with embedder ablation on the 3 dense-retrieval ones) | ~55–65 h Groq | small, Groq is cheap |
-| Phase 4 RAGAS judge (~5 archs × 300 × 5 metrics × ablation factor) | ~2 h | ~$15–25 Claude 3.5 Sonnet |
+| Phase 4 (Group A · 5 experiments × 12,723) | ~30–40 h Groq | small, Groq is cheap |
+| Phase 4 RAGAS judge (5 archs × 300 × 5 metrics) | ~1.5 h | ~$10–15 Claude 3.5 Sonnet |
 | Phase 5 (adaptive) | ~10 h Groq | small |
 | Phase 6 (LIME/SHAP, sampled to 200/arch) | ~6–10 h Groq | small |
 | Phase 7 (confidence) | <1 h compute (re-uses prior outputs) | $0 |
 | Phase 8 (taxonomy) | 3 h human + 30 min compute | ~$3 GPT-4o-mini if classifier-assisted |
 | Phase 9 (synthesis) | 30 min | $0 |
 | **Phase 10 (demo UI, optional)** | ~5 days human time, spread A/B/C | $0 (Streamlit Cloud free tier) |
-| **Total** | **~4–5 weeks elapsed (+ ~5 days if Phase 10 taken)** | **~$30–45** |
+| **Total** | **~3–4 weeks elapsed (+ ~5 days if Phase 10 taken)** | **~$25–35** |
 
 The dominant cost is **wall-clock**, not money. Disk-cache every Groq + Claude + GPT-4o response by `(experiment_id, question_id, prompt_hash)` so resuming after a rate-limit pause is free.
 
@@ -540,7 +534,7 @@ The dominant cost is **wall-clock**, not money. Disk-cache every Groq + Claude +
 
 You're at the end of Phase 1. Phase 2 unblocks everything else.
 
-1. **Now → next session:** build Notebook 01 (chunking) and Notebook 02 (BGE + MedEmbed embeddings + 2× ChromaDB + BM25). 1 day of work end-to-end including the smoke test in Notebook 03.
+1. **Now → next session:** build Notebook 01 (chunking) and Notebook 02 (BGE-large embeddings + ChromaDB + BM25). 1 day of work end-to-end including the smoke test in Notebook 03.
 2. **Following session:** build the `src/` skeleton modules (`retrieval/`, `generation/`, `eval/runner.py`).
 3. **Then:** Notebook 04 — golden RAGAS dataset construction (50-row pilot first ~$2, then 250 more for production = 300 total ~$10). Add `OPENAI_API_KEY` to `.env` first.
 4. **(Optional) Right after Phase 3:** Phase 10 Stage A — Streamlit scaffolding with mock data. **The key reason to do Stage A here**: it forces you to lock `summary.json` shape before any expensive experiment runs, saving rework later.
