@@ -214,21 +214,23 @@ This is roughly aligned with the USMLE Step 1 + Step 2&3 question pool — suppo
 
 ---
 
-## 4. Two evaluation surfaces — raw splits vs. golden subset
+## 4. Two evaluation surfaces — raw 12,723 vs. fresh golden subset
 
-Don't confuse the two:
+The thesis uses both, for different purposes:
 
-| Property | Raw MedQA US splits | Curated golden dataset |
+| Property | Raw MedQA US (full) | Curated golden dataset (to be built fresh) |
 |---|---|---|
-| Source | `medqa-data/questions/US/` | `golden-data/medqa_ragas_golden.jsonl` |
-| Size | 12,723 (full) / 1,273 (test) / 1,272 (dev) | **65 accepted rows** (built from a 100-row dev sample) |
-| Built by | Original MedQA paper (Jin et al., 2020) | Notebook 04 — see `docs/golden-data/methodology.md` |
+| Source | `medqa-data/questions/US/` (4-option variant preferred) | `data/processed/golden_ragas_1000.jsonl` (Notebook 04 — to build) |
+| Size | **12,723 questions** (train + dev + test combined) | **1,000 stratified rows** (target — see `plan.md` §5) |
+| Built by | Original MedQA paper (Jin et al., 2020) | This thesis — Notebook 04 from-scratch construction with GPT-4o-mini three-pass pipeline |
 | Has reference *explanations* | No (only `answer` and `answer_idx`) | Yes (`reference_explanation`, `gold_context`, `hallucination_check_points`) |
-| Suitable for | Exact-match accuracy, retrieval recall@k, latency | Full **RAGAS** evaluation (Faithfulness, Context Precision, Context Recall, Answer Relevancy, Answer Correctness) |
-| Stratification fields | `meta_info`, length-based long-vignette flag | `question_type`, `requires_multihop`, plus all raw-MedQA fields |
-| Long-vignette rate | 4.07% (representative) | ~20% (deliberately oversampled for stress-testing) |
+| Suitable for | **Exact-match accuracy**, **Retrieval Recall@K**, **latency** for all 16 experiments | **Full RAGAS suite** — Faithfulness, Context Precision, Context Recall, Answer Relevancy, Answer Correctness |
+| Stratification fields | `meta_info`, length-based long-vignette flag | `question_type` ∈ {diagnosis, treatment, mechanism, management, other}, `requires_multihop`, plus all raw-MedQA fields |
+| Long-vignette rate | 4.07% (representative) | ~20% (deliberately oversampled for Multi-Hop fairness) |
 
-The thesis evaluation strategy mixes both per `plan.md` §4: the golden subset for full RAGAS metrics (where reference explanations are required) and the test split for accuracy-only metrics at scale. Plan to scale the golden set from 65 → 1,500 rows (`plan.md` §4 option A) to bring the two evaluation surfaces closer in size.
+**Why every experiment evaluates on the full 12,723** — exact-match accuracy and retrieval recall don't need reference explanations; they only need `answer_idx` and the retrieved-chunk IDs. So they scale to the full corpus. The 1,000-row golden subset is *only* needed for the RAGAS-suite metrics that demand a reference answer + reference context.
+
+> **Legacy 65-row golden set in [`golden-data/`](../../golden-data/):** built earlier with MiniLM + 200-token chunks. **Not consumed by the from-scratch plan** — the new BGE-large + 400-token chunks would invalidate every `chunk_id` reference in it. Kept as reference material only; see `docs/golden-data/methodology.md` for the construction methodology being re-used.
 
 ---
 
