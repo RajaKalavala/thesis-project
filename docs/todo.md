@@ -53,12 +53,15 @@
   - The two retrievers find *different but equally relevant* content ⇒ Hybrid RAG (EXP_04) has real signal to fuse
 - **Deliverable:** ✓ all three indices on disk; count parity verified — `chunks.parquet (67,599) == embeddings.npy (67,599) == ChromaDB.count() (67,599) == bm25.chunk_ids (67,599)`
 
-### 2.3 Notebook 03 — `notebooks/03_smoke_test_pipeline.ipynb`
+### 2.3 Notebook 03 — `notebooks/03_smoke_test_pipeline.ipynb` ✅ COMPLETE (2026-05-04)
 
-- [ ] End-to-end on 3 dev questions: query → BGE retrieval → prompt construction → Groq → parse predicted letter
-- [ ] Print question, top-5 retrieved chunks, generated answer side by side
-- [ ] Time per question; verify Groq quota
-- **Deliverable:** notebook prints 3 sensible answer rows, average latency < 5 s
+- [x] End-to-end on 3 dev questions: query → BGE retrieval → prompt construction → Groq → parse predicted letter (2026-05-04)
+- [x] Print question, top-5 retrieved chunks, generated answer side by side (2026-05-04)
+- [x] Time per question; verify Groq quota (2026-05-04 — Groq free tier comfortably handles the load; mean latency 1.38 s)
+- **Deliverable:** ✓ 3 / 3 letters parsed cleanly (`'B'`, `'B'`, `'D'`); mean latency **1.38 s** (≪ 5 s budget); cache works (Q0 hit cache from §6 in §7)
+  - Q0 (gallstone ileus → distal ileum): truth=B, predicted=**B** ✓
+  - Q1 (avoidant personality disorder vignette): truth=A, predicted=**B** Schizoid ✗ — **informative retrieval miss**: top-5 returned general personality-disorder content but no Cluster C / Avoidant-specific chunks. Demonstrates why Hybrid RAG (EXP_04) is needed when answer labels aren't named in the question stem. Pipeline is correct; this is a real retrieval limitation worth recording in methodology.
+  - Q2 (HIV gp120 binding): truth=D, predicted=**D** ✓
 
 ---
 
@@ -70,19 +73,18 @@ Build in this dependency order. Add a 3-question unit test against `chunks.parqu
 - [x] `src/data/chunker.py` — recursive 400/80 chunker (called by Notebook 01) (2026-05-03 — built alongside §2.1)
 - [x] `src/data/embedder.py` — BGE-large wrapper (`load_bge`, `embed_passages`, `embed_queries` with prefix, MPS auto-detect) (2026-05-04 — built alongside §2.2)
 - [x] `src/data/indices.py` — `build_chroma`/`load_chroma` + `build_bm25`/`load_bm25` + `bm25_top_k` (2026-05-04 — built alongside §2.2; loader role from todo plus the build role for the one-time §2.2 run)
-- [ ] `src/data/indices.py` — load ChromaDB (BGE) and BM25 from disk
 - [ ] `src/retrieval/base.py` — `Retriever` ABC: `retrieve(q: str, k: int) -> list[Chunk]`
 - [ ] `src/retrieval/none.py` — returns `[]` (for EXP_01)
-- [ ] `src/retrieval/naive.py` — ChromaDB top-k with BGE query prefix
+- [ ] `src/retrieval/naive.py` — ChromaDB top-k with BGE query prefix (Notebook 03 inlined this; refactor into `src/retrieval/` before EXP_02)
 - [ ] `src/retrieval/sparse.py` — BM25 top-k
 - [ ] `src/retrieval/hybrid.py` — RRF fusion (k=60)
 - [ ] `src/retrieval/multi_hop.py` — decompose → 1–3 hops → accumulate
-- [ ] `src/generation/groq_client.py` — Groq wrapper with disk cache (key = sha256 of `model + temp + prompt`)
-- [ ] `src/generation/prompts.py` — base evidence-grounded prompt + No-RAG variant + Multi-Hop prompt
+- [x] `src/generation/groq_client.py` — Groq wrapper with disk cache (key = sha256 of `provider + model + temp + prompt`); returns `(text, latency_s, was_cached)` (2026-05-04 — built alongside §2.3, exercised in 3 real Groq calls)
+- [x] `src/generation/prompts.py` — `build_evidence_grounded_prompt` + `build_no_rag_prompt` + permissive `parse_letter` (2026-05-04 — built alongside §2.3; multi-hop variant deferred until EXP_05)
 - [ ] `src/eval/non_llm_metrics.py` — Exact Match, Retrieval Recall@K, MRR, nDCG@K, latency
 - [ ] `src/eval/ragas_eval.py` — wrap RAGAS with **Claude 3.5 Sonnet** as judge (Anthropic key)
 - [ ] `src/eval/runner.py` — `run_experiment(retriever, dataset, output_dir)` writes `predictions.jsonl`, `retrieval.jsonl`, `summary.json`
-- [ ] `src/utils/cache.py` — disk cache for all LLM calls (Groq, OpenAI, Anthropic)
+- [x] `src/utils/cache.py` — disk cache for all LLM calls (Groq, OpenAI, Anthropic) — JSON files at `data/cache/<provider>/<key[:2]>/<key>.json` (2026-05-04 — built alongside §2.3, exercised by `groq_complete`)
 - **Deliverable:** every module has at least one passing 3-row test against real data
 
 ---
@@ -335,6 +337,7 @@ When all 16 experiments are done:
 | 2026-05-03 | **Chunk-count expectation recalibrated**: ~36k → **~67k** chunks (acceptance band 50k–75k) | plan.md §0 #5 estimate, §4 acceptance, §15 risk; docs/todo.md §2.1 | Math: corpus = 16.7 M cl100k tokens; 400-token chunks with 80-token overlap advance ≤ 320 unique tokens, giving a floor of ~52k chunks. `RecursiveCharacterTextSplitter` fills to ~80% of the cap (mean ≈ 324 tokens), so realistic count is ~67k. The 400/80 config itself stays locked. Notebook 01 produced **67,599 chunks** at mean 323.9 tokens, Harrison's 24.66% — all within the new band. Knock-on: BGE embed time ≈ 45–50 min CPU (was estimated 25 min); index size ≈ 274 MB (was 131 MB). |
 | 2026-05-04 | **BGE-large embed time recalibrated again**: ~22 min MPS → **~355 min MPS** measured | plan.md §0 #2 + §4 + §14; docs/architecture.md §8; docs/tech_stack.md; memory/project_thesis_overview.md | Notebook 02 §6 actual wall-time 354.9 min on M1 Pro MPS for 67,599 chunks at batch 32. First-batch timing extrapolated to ~118 min, but sustained throughput degraded to ~16 s/batch over 6 hours — thermal throttling and/or partial-MPS coverage on BGE-large's 1024-d attention. **Output is correct** (norms = 1.0, shape (67599,1024), retrieval works on the smoke query). The cost is paid once: `embeddings.npy` is now on disk and §6 is resumable. No re-embed needed; just update plan estimates so future-you doesn't believe the 22-min figure. |
 | 2026-05-04 | **`chromadb>=0.5,<0.6` + `transformers>=4.46,<5.0` pinned** in `requirements.txt` | requirements.txt | chromadb 0.5 transitively requires `tokenizers<0.21`, which is incompatible with `transformers 5.x` (needs `tokenizers>=0.22`). Pinning transformers to the 4.x line keeps both libraries co-installable. Both work at runtime despite a cosmetic pip-resolver warning. Telemetry warnings silenced via `Settings(anonymized_telemetry=False)` + `ANONYMIZED_TELEMETRY=False` env var. |
+| 2026-05-04 | **Phase 2 fully complete** (Notebooks 01 + 02 + 03 all run end-to-end with verified outputs) | docs/todo.md §2.1, §2.2, §2.3; memory/project_thesis_overview.md | All four shared infrastructure artefacts on disk: `chunks.parquet` (67,599) · `embeddings.npy` (67,599 × 1024) · `chroma_textbooks/` (cosine HNSW, count parity ✓) · `bm25.pkl`. Notebook 03 smoke test: 3 / 3 letters parsed, mean latency 1.38 s, disk cache operational. Q1's wrong answer (Avoidant labelled as Schizoid) was an *informative retrieval miss* — top-5 returned general personality-disorder content but no Cluster-C specifics. Methodology finding worth recording: Naive RAG insufficient when answer label isn't named in the question stem; motivates Hybrid RAG (EXP_04). |
 
 ---
 
