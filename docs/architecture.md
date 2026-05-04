@@ -80,9 +80,11 @@ src/
 │   ├── complexity.py          # rule-based labeller (EXP_06)
 │   └── adaptive.py            # router using complexity labels (EXP_07)
 ├── generation/
-│   ├── groq_client.py         # Groq client (LLaMA 3.3 70B answerer + gpt-oss-120b constructor)
+│   ├── groq_client.py         # Groq client (LLaMA 3.3 70B answerer)
+│   ├── openai_client.py       # OpenAI client (gpt-4o golden-set constructor)
 │   ├── anthropic_client.py    # Claude 3.5 Sonnet for RAGAS judge
-│   └── prompts.py             # base evidence-grounded + No-RAG + Multi-Hop + golden-set construction prompts
+│   ├── prompts.py             # base evidence-grounded + No-RAG + Multi-Hop prompts (Phase 4)
+│   └── golden_prompts.py      # 3-pass golden-set construction prompts (Phase 3)
 ├── eval/
 │   ├── non_llm_metrics.py     # exact match, retrieval recall@k, MRR, nDCG@k
 │   ├── ragas_eval.py          # RAGAS suite, Claude as judge
@@ -161,7 +163,7 @@ class BaseConfig:
     rrf_k: int = 60
     multi_hop_budget: int = 3
 
-    constructor_model: str = "openai/gpt-oss-120b"  # via Groq, recalibrated 2026-05-04 from "gpt-4o"
+    constructor_model: str = "gpt-4o"               # locked 2026-05-04 after A/B vs gpt-oss-120b
     judge_model: str = "claude-3-5-sonnet-20241022"
 
 @dataclass(frozen=True)
@@ -332,13 +334,13 @@ When you're about to launch a 6-hour Groq run:
 | Phase 2 — ChromaDB build | ✅ Trivial | Disk-based, ~1 min. |
 | Phase 2 — BM25 index | ✅ Trivial | Pure Python, ~30 s. |
 | Phase 2 — Smoke test (Notebook 03) | ✅ Trivial | 3 questions, ~30 s. |
-| Phase 3 — **Golden RAGAS dataset** (Notebook 04) | ✅ API-bound | All compute is Groq API calls (`gpt-oss-120b` constructor — recalibrated 2026-05-04 from GPT-4o). M1 Pro just orchestrates. ~1.5–2 h wall-clock, network-stable required. |
+| Phase 3 — **Golden RAGAS dataset** (Notebook 04) ✅ DONE 2026-05-04 | ✅ API-bound | All compute is OpenAI API calls (`gpt-4o` constructor — locked 2026-05-04 after A/B). M1 Pro just orchestrates. **Measured wall-time: ~80 min for 300 questions; cost $6.61.** Output: 234 accepted in `data/processed/golden_ragas_300.jsonl`. |
 | Phase 4 — **Group A (5 experiments × 12,723)** | ✅ API-bound (long) | All compute is Groq API. M1 Pro orchestrates + caches. ~30–40 h wall-clock total. Run as backgrounded Python scripts overnight. |
 | Phase 4 — RAGAS judging | ✅ API-bound | Anthropic API. ~2 h wall-clock for all architectures × 300 golden × 5 metrics. |
 | Phase 5 — Adaptive RAG | ✅ API-bound | ~10 h Groq. |
 | Phase 6 — LIME / SHAP | ✅ Mostly API-bound | Local: small linear models, perturbation logic. Remote: Groq for re-prompting. ~6–10 h. |
 | Phase 7 — Confidence | ✅ Trivial | Pure Python aggregation, no LLM calls. <30 min. |
-| Phase 8 — Taxonomy | ✅ Mostly local | Manual labelling + small scikit-learn classifier. <1 h compute. Optional `gpt-oss-20b` (Groq, free) classifier ~5 min. |
+| Phase 8 — Taxonomy | ✅ Mostly local | Manual labelling + small scikit-learn classifier. <1 h compute. Optional `gpt-4o-mini` classifier ~5 min (~$1). |
 | Phase 9 — Final synthesis | ✅ Trivial | Pandas aggregation, plotting. <30 min. |
 | Thesis writing | ✅ | Markdown + LaTeX + your favourite editor. |
 

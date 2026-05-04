@@ -85,8 +85,8 @@ BM25(q,d) = Σ_{t ∈ q} IDF(t) · [ f(t,d)·(k1+1) / ( f(t,d) + k1·(1 - b + b�
 | **Sparse index** | `rank-bm25` (Okapi BM25) | Standard medical-IR baseline; pairs with ChromaDB for Hybrid RAG. |
 | **Prompt template** | Single evidence-grounded template (locked across all four architectures) | Multi-Hop uses an extended variant for question decomposition; everything else identical. |
 | **Chunking** | Recursive 400-token chunks, **80-token overlap (20%)**, dropping <30-token fragments | 20% overlap is standard in 2024–25 medical-RAG papers. ~36k chunks. |
-| **Golden-set constructor LLM** | `openai/gpt-oss-120b` via Groq — three-pass JSON pipeline | Recalibrated 2026-05-04 from `gpt-4o`. OpenAI's open-weights 120B model running on Groq's free tier preserves the 3-family separation at $0. 50-row pilot is the quality gate; fallback to GPT-4o-mini ($3) → GPT-4o ($12) if needed. |
-| **RAGAS judge LLM** | `claude-3-5-sonnet` (Anthropic) | Different family from generator (LLaMA) AND constructor (`gpt-oss-120b`) — kills evaluator-on-evaluator bias. Stays paid: Faithfulness scoring requires sub-statement hallucination detection where Claude is validated against human raters more thoroughly than open-weights judges. |
+| **Golden-set constructor LLM** | `gpt-4o` (OpenAI) — three-pass JSON pipeline with new prompts (structured `selected_chunks`, verbatim `best_gold_context`, `answer_match`, multi-hop tightening) | **Locked 2026-05-04** after empirical A/B vs `openai/gpt-oss-120b` (78 % salvageable vs 64 %; 0 vs 11 loop errors). Production run: 234/300 accepted at $6.61. |
+| **RAGAS judge LLM** | `claude-3-5-sonnet` (Anthropic) | Different family from generator (LLaMA) AND constructor (`gpt-4o`) — kills evaluator-on-evaluator bias. Stays paid: Faithfulness scoring requires sub-statement hallucination detection where Claude is validated against human raters more thoroughly than open-weights judges. |
 
 ---
 
@@ -260,7 +260,7 @@ The clinical use case: a doctor can see *which textbook passage(s)* the system r
 | Lang & data | Python 3.12, Pandas 2.3, NumPy 2.2, PyArrow | Preprocessing, chunk handling, results analysis |
 | LLM & prompts | LangChain, Sentence-Transformers | Prompt flows, retrieval chains, dense embeddings |
 | Retrieval | ChromaDB (two collections), rank-bm25 | Dense + sparse retrieval |
-| Inference | LLaMA 3.3 70B via Groq (answerer); `openai/gpt-oss-120b` via Groq (golden-set constructor — recalibrated 2026-05-04 from GPT-4o); Claude 3.5 Sonnet via Anthropic (RAGAS judge) | Three-family separation kills evaluator bias |
+| Inference | LLaMA 3.3 70B via Groq (answerer); `gpt-4o` via OpenAI (golden-set constructor — locked 2026-05-04 after A/B); Claude 3.5 Sonnet via Anthropic (RAGAS judge) | Three-family separation kills evaluator bias |
 | Eval & XAI | RAGAS, LIME, SHAP, scikit-learn | Metrics + explainability |
 | Viz | Matplotlib, Seaborn | Plots & comparison charts |
 | VC | Git, GitHub | Repo management |

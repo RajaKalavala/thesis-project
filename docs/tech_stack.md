@@ -16,10 +16,10 @@
    ┌──────────────────────────────┼──────────────────────────────┐
    ▼                              ▼                              ▼
 DATA & EDA                  RETRIEVAL                       GENERATION
-pandas · numpy              langchain (chunker only)        groq (LLaMA generator
-pyarrow · matplotlib        sentence-transformers                  + gpt-oss-120b
-seaborn · jupyter           ChromaDB · rank-bm25                   constructor)
-                            tiktoken                        anthropic (Claude judge)
+pandas · numpy              langchain (chunker only)        groq (LLaMA generator)
+pyarrow · matplotlib        sentence-transformers           openai (gpt-4o constructor)
+seaborn · jupyter           ChromaDB · rank-bm25            anthropic (Claude judge)
+                            tiktoken
    ▼                              ▼                              ▼
 EVALUATION                  EXPLAINABILITY                  SAFETY & DEMO
 RAGAS                       LIME · SHAP                     custom confidence
@@ -67,8 +67,8 @@ scikit-learn                                                Streamlit (optional)
 | Role | Provider | Model | API SDK | Why a different family |
 |---|---|---|---|---|
 | **Answerer** (the system under test) | Groq Cloud | `llama-3.3-70b-versatile` | `groq` | Fast LPU inference; 131k context; open-weights LLaMA reproducible |
-| **Golden-set constructor** (Phase 3) | Groq Cloud (OpenAI open-weights) | `openai/gpt-oss-120b` | `groq` | Recalibrated 2026-05-04 from `gpt-4o`. OpenAI's largest open-weights release running free on Groq — preserves the 3-family separation (Meta gen / OpenAI cons / Anthropic judge) at $0. Pilot-validated on 50 rows before scaling. |
-| **RAGAS judge** (Phase 4) | Anthropic | `claude-3-5-sonnet-20241022` | `anthropic` | Different family from BOTH generator (LLaMA) and constructor (`gpt-oss-120b`) — kills evaluator-on-evaluator bias. Stays on the paid API: Faithfulness scoring requires sub-statement hallucination detection where Claude is validated against human raters far more thoroughly than open-weights judges. |
+| **Golden-set constructor** (Phase 3) | OpenAI | `gpt-4o` | `openai` | **Locked 2026-05-04** after empirical A/B against `openai/gpt-oss-120b` on Groq (78 % salvageable vs 64 %, 0 loop errors vs 11 — see `docs/output_notes/04_notebook_output.md`). Three-pass JSON pipeline with new prompts (structured `selected_chunks`, verbatim `best_gold_context`, `answer_match` boolean, multi-hop tightening). Production run 2026-05-04: 234 / 300 accepted at $6.61. |
+| **RAGAS judge** (Phase 4) | Anthropic | `claude-3-5-sonnet-20241022` | `anthropic` | Different family from BOTH generator (LLaMA) and constructor (`gpt-4o`) — kills evaluator-on-evaluator bias. Stays on the paid API: Faithfulness scoring requires sub-statement hallucination detection where Claude is validated against human raters far more thoroughly than open-weights judges. |
 
 The three-family separation is **load-bearing** for the methodology defence: every metric the judge produces is from a model that was not involved in writing the references or generating the answers.
 
@@ -145,19 +145,27 @@ This section records what we *thought* about and *didn't* pick, so the methodolo
 - LLaMA 3.3 70B as judge — same family as the answerer. Forbidden by methodology principle.
 - Open-weights judge (`gpt-oss-120b`, `qwen3-32b`) — RAGAS Faithfulness scoring requires sub-statement hallucination detection where open-weights models have weaker validation against human raters than Claude/GPT-4-class judges. Saving $10–15 here is not worth introducing methodological doubt on every Faithfulness number in the results chapter.
 
-### 3.5 Golden-set constructor — **`openai/gpt-oss-120b` via Groq**
+### 3.5 Golden-set constructor — **`gpt-4o`** (OpenAI API)
 
-**Locked (recalibrated 2026-05-04 from `gpt-4o`):** `openai/gpt-oss-120b` running on Groq's free tier.
+**Locked 2026-05-04** after empirical A/B comparison: same 50 questions, same prompts, same retrieval, only constructor swapped.
 
-**Why the swap.** OpenAI's largest open-weights release (engineered for the same JSON-mode behaviour as GPT-4o) runs free on Groq. Preserves the methodologically-load-bearing 3-family separation (Meta generator / OpenAI constructor / Anthropic judge) at $0 instead of $12. The 50-row pilot acts as the quality gate: accept rate ≥ 80 % and JSON malformation < 5 % ⇒ continue with `gpt-oss-120b`; otherwise fall back.
+**A/B result:**
 
-**Fallback ladder if pilot fails:**
-1. `gpt-4o-mini` (~$3 for 300 rows) — same OpenAI family lineage, paid API, more reliable JSON
-2. `gpt-4o` full (~$12 for 300 rows) — original locked choice, last resort
+| Metric | `openai/gpt-oss-120b` (Groq, free) | `gpt-4o` (OpenAI, paid) |
+|---|---|---|
+| Salvageable rows | 64 % | **78 %** |
+| Loop / schema errors | 11 | **0** |
+| Smoke-question faithfulness | 3/5 | **5/5** |
+| Cost (300 rows) | $0.40 | $6.61 |
+
+**Why gpt-4o won.** Cost difference is small in absolute terms relative to the thesis budget; quality lift compounds into every Faithfulness / Context Precision / Context Recall number in chapters 4 and 5. Production run on 300 questions confirmed it scales: 234 accepted, 53 needs_review, 13 dropped at $6.61.
+
+**Prompts (locked 2026-05-04):** new three-pass templates with structured `selected_chunks`, verbatim `best_gold_context` concatenation by Pass 1, `answer_match` boolean in Pass 3, and a tightened `requires_multihop` definition that empirically dropped over-labelling from 66 % to 6 %.
 
 **Rejected (with reason):**
-- `qwen3-32b` (Alibaba, 32B) — fully independent family but smaller than `gpt-oss-120b`; expected to drop more under multi-pass JSON stress. Held in reserve as a "swap to a different family" experiment if `gpt-oss-120b` results raise methodological questions.
-- `meta-llama/llama-4-scout-17b-16e-instruct` — same family as the LLaMA generator. Forbidden.
+- `openai/gpt-oss-120b` via Groq — A/B-tested and underperformed; preserved in [`notebooks/04_golden_dataset_gptoss.ipynb`](../notebooks/04_golden_dataset_gptoss.ipynb) and [`docs/output_notes/04_notebook_output.md`](output_notes/04_notebook_output.md) as historical record.
+- `gpt-4o-mini` — ~30× cheaper than full GPT-4o but less reliable on multi-pass strict JSON. The full GPT-4o is ~$6.61 for 300 rows vs ~$3 for mini; the cost gap is trivial against the quality lift.
+- `qwen3-32b` (Alibaba, 32B) — fully independent family but smaller than gpt-oss-120b; expected to drop further under multi-pass JSON stress.
 
 ### 3.6 Frameworks/tools considered and **rejected**
 
@@ -178,12 +186,12 @@ This section records what we *thought* about and *didn't* pick, so the methodolo
 `.env` at repo root — **never committed** (in `.gitignore`):
 
 ```
-GROQ_API_KEY=...        # Phase 3 + Phase 4 — answerer (LLaMA) + constructor (gpt-oss-120b)
-ANTHROPIC_API_KEY=...   # Phase 4 onward — RAGAS judge (Claude Sonnet)
-OPENAI_API_KEY=...      # OPTIONAL — only if the gpt-oss-120b pilot fails and you fall back to GPT-4o-mini
+GROQ_API_KEY=...        # Phase 4 onward — LLaMA 3.3 70B answerer
+OPENAI_API_KEY=...      # Phase 3 — gpt-4o golden-set constructor
+ANTHROPIC_API_KEY=...   # Phase 4 onward — Claude 3.5 Sonnet RAGAS judge
 ```
 
-`GROQ_API_KEY` and `ANTHROPIC_API_KEY` are needed before experiments. `OPENAI_API_KEY` is now optional under the recalibrated plan (2026-05-04). Demo UI (Phase 10) in cached mode needs **none** of them.
+All three needed before experiments. Demo UI (Phase 10) in cached mode needs **none** of them.
 
 ---
 

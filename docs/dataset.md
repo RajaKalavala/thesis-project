@@ -222,7 +222,7 @@ The thesis uses both, for different purposes:
 |---|---|---|
 | Source | `medqa-data/questions/US/` (4-option variant preferred) | `data/processed/golden_ragas_300.jsonl` (built in `plan.md` §5) |
 | Size | **12,723 questions** (train + dev + test combined) | **300 stratified rows** — staged 50-pilot + 250-production |
-| Built by | Original MedQA paper (Jin et al., 2020) | This thesis — Notebook 04, `openai/gpt-oss-120b`-via-Groq three-pass pipeline + automated audit (recalibrated 2026-05-04 from GPT-4o) |
+| Built by | Original MedQA paper (Jin et al., 2020) | This thesis — Notebook 04, `gpt-4o`-via-OpenAI three-pass pipeline + automated audit (✅ produced 234 accepted of 300 attempted on 2026-05-04 at $6.61) |
 | Has reference *explanations* | No (only `answer` and `answer_idx`) | Yes (`reference_explanation`, `gold_context`, `hallucination_check_points`) |
 | Suitable for | **Exact-match accuracy**, **Retrieval Recall@K**, **latency** for all 16 experiments | **Full RAGAS suite** — Faithfulness, Context Precision, Context Recall, Answer Relevancy, Answer Correctness |
 | Stratification fields | `meta_info`, length-based long-vignette flag | `question_type` ∈ {diagnosis, treatment, mechanism, management, other}, `requires_multihop`, plus all raw-MedQA fields |
