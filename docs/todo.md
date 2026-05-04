@@ -41,14 +41,17 @@
 - [x] Acceptance (recalibrated 2026-05-03): **~50k–75k** total chunks (the original "~32k–40k" was mathematically unreachable for a 12.85 M-word corpus with 400/80 config); mean **300–380** tokens; max ≤ 450; Harrison's still ~25% of chunks (2026-05-03 — actual: **67,599 chunks, mean 323.9 tokens, max ≤ 400, Harrison's 24.66 %**)
 - **Deliverable:** `chunks.parquet` exists (~30 MB, 67,599 rows); per-book chunk-count bar chart + token-distribution histogram printed in the notebook ✓
 
-### 2.2 Notebook 02 — `notebooks/02_embeddings_and_indices.ipynb`
+### 2.2 Notebook 02 — `notebooks/02_embeddings_and_indices.ipynb` ✅ COMPLETE (2026-05-04)
 
-- [ ] Embed all chunks with **`BAAI/bge-large-en-v1.5`** (sentence-transformers; batch 32; M1 Pro CPU ≈ 25 min, MPS ≈ 12 min)
-  - Saves `data/processed/embeddings.npy`
-- [ ] Build ChromaDB collection `medqa_textbooks_bge_400` at `data/indices/chroma_textbooks/` (cosine HNSW, metadata = `{book_name, n_tokens}`)
-- [ ] Build BM25 index at `data/indices/bm25.pkl`
-- [ ] Smoke query *"What is the first-line treatment for community-acquired pneumonia?"* → top-3 from both indices (ChromaDB dense + BM25 sparse) clearly relate to pneumonia/antibiotics
-- **Deliverable:** both indices on disk; ChromaDB collection's `count()` matches `len(chunks_df)`
+- [x] Embed all chunks with **`BAAI/bge-large-en-v1.5`** (sentence-transformers; batch 32; **actual: ~355 min on M1 Pro MPS**, far above the original `MPS ≈ 12 min` / recalibrated `~22 min` estimates — sustained-load thermal throttling and/or partial-MPS coverage on BGE-large's 1024-d attention) (2026-05-03)
+  - Saves `data/processed/embeddings.npy` — 67,599 × 1,024 float32, **276.9 MB**, all rows L2-normalised (norm = 1.0000)
+- [x] Build ChromaDB collection `medqa_textbooks_bge_400` at `data/indices/chroma_textbooks/` (cosine HNSW, metadata = `{book_name, n_tokens}`) — 67,599 vectors, **1,124.2 MB on disk**, build wall-time 1m 39s (2026-05-04)
+- [x] Build BM25 index at `data/indices/bm25.pkl` — **105.8 MB**, 67,599 chunk_ids, build wall-time 8 s (2026-05-04)
+- [x] Smoke query *"What is the first-line treatment for community-acquired pneumonia?"* → top-3 from both indices clearly relate to pneumonia/antibiotics (2026-05-04)
+  - Dense (ChromaDB) → Harrison's empirical-therapy + macrolide/β-lactam combo + Novak ATS guidelines
+  - Sparse (BM25) → Pharmacology_Katzung's CAP case study with **ceftriaxone + azithromycin** (literal first-line) + Harrison's M. pneumoniae and Legionella chapters
+  - The two retrievers find *different but equally relevant* content ⇒ Hybrid RAG (EXP_04) has real signal to fuse
+- **Deliverable:** ✓ all three indices on disk; count parity verified — `chunks.parquet (67,599) == embeddings.npy (67,599) == ChromaDB.count() (67,599) == bm25.chunk_ids (67,599)`
 
 ### 2.3 Notebook 03 — `notebooks/03_smoke_test_pipeline.ipynb`
 
@@ -65,6 +68,8 @@ Build in this dependency order. Add a 3-question unit test against `chunks.parqu
 
 - [ ] `src/data/loaders.py` — load parquet + golden JSONL
 - [x] `src/data/chunker.py` — recursive 400/80 chunker (called by Notebook 01) (2026-05-03 — built alongside §2.1)
+- [x] `src/data/embedder.py` — BGE-large wrapper (`load_bge`, `embed_passages`, `embed_queries` with prefix, MPS auto-detect) (2026-05-04 — built alongside §2.2)
+- [x] `src/data/indices.py` — `build_chroma`/`load_chroma` + `build_bm25`/`load_bm25` + `bm25_top_k` (2026-05-04 — built alongside §2.2; loader role from todo plus the build role for the one-time §2.2 run)
 - [ ] `src/data/indices.py` — load ChromaDB (BGE) and BM25 from disk
 - [ ] `src/retrieval/base.py` — `Retriever` ABC: `retrieve(q: str, k: int) -> list[Chunk]`
 - [ ] `src/retrieval/none.py` — returns `[]` (for EXP_01)
@@ -328,6 +333,8 @@ When all 16 experiments are done:
 | 2026-05-03 | **Phase 10 — Demo UI accepted as optional parallel track** | plan.md §12 (Phase 10) | Cached-only mode, 4 tabs, Streamlit. Build only if time permits; drop if experiments slip. Schema-lock in Stage A protects against rework. |
 | 2026-05-03 | **Golden RAGAS dataset sized at 300** (was originally 1,000) | plan.md §0 #9, §5 | Cost-efficiency. 300 preserves ≥ 60 rows per `question_type` bucket for stratified analysis; below-the-floor risk at 200 was avoided. Built in two stages: 50-row pilot ($2) → 250 production ($10). |
 | 2026-05-03 | **Chunk-count expectation recalibrated**: ~36k → **~67k** chunks (acceptance band 50k–75k) | plan.md §0 #5 estimate, §4 acceptance, §15 risk; docs/todo.md §2.1 | Math: corpus = 16.7 M cl100k tokens; 400-token chunks with 80-token overlap advance ≤ 320 unique tokens, giving a floor of ~52k chunks. `RecursiveCharacterTextSplitter` fills to ~80% of the cap (mean ≈ 324 tokens), so realistic count is ~67k. The 400/80 config itself stays locked. Notebook 01 produced **67,599 chunks** at mean 323.9 tokens, Harrison's 24.66% — all within the new band. Knock-on: BGE embed time ≈ 45–50 min CPU (was estimated 25 min); index size ≈ 274 MB (was 131 MB). |
+| 2026-05-04 | **BGE-large embed time recalibrated again**: ~22 min MPS → **~355 min MPS** measured | plan.md §0 #2 + §4 + §14; docs/architecture.md §8; docs/tech_stack.md; memory/project_thesis_overview.md | Notebook 02 §6 actual wall-time 354.9 min on M1 Pro MPS for 67,599 chunks at batch 32. First-batch timing extrapolated to ~118 min, but sustained throughput degraded to ~16 s/batch over 6 hours — thermal throttling and/or partial-MPS coverage on BGE-large's 1024-d attention. **Output is correct** (norms = 1.0, shape (67599,1024), retrieval works on the smoke query). The cost is paid once: `embeddings.npy` is now on disk and §6 is resumable. No re-embed needed; just update plan estimates so future-you doesn't believe the 22-min figure. |
+| 2026-05-04 | **`chromadb>=0.5,<0.6` + `transformers>=4.46,<5.0` pinned** in `requirements.txt` | requirements.txt | chromadb 0.5 transitively requires `tokenizers<0.21`, which is incompatible with `transformers 5.x` (needs `tokenizers>=0.22`). Pinning transformers to the 4.x line keeps both libraries co-installable. Both work at runtime despite a cosmetic pip-resolver warning. Telemetry warnings silenced via `Settings(anonymized_telemetry=False)` + `ANONYMIZED_TELEMETRY=False` env var. |
 
 ---
 

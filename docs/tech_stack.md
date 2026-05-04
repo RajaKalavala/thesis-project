@@ -158,8 +158,8 @@ This section records what we *thought* about and *didn't* pick, so the methodolo
 | **LangChain** (broadly) | Adds abstraction layers that hide important details. We use only `RecursiveCharacterTextSplitter`. |
 | **LangGraph** | Same — over-abstracts the multi-hop control flow we want to write directly. |
 | **LangSmith** (observability) | Free-tier 5k-trace limit insufficient (we'll do 50k+ calls). Disk-cache + structured `predictions.jsonl` already give equivalent observability for free. |
-| **RunPod / Lambda Labs** (GPU rental) | Almost everything is API-bound (Groq/OpenAI/Anthropic). The one CPU/GPU task (embedding ~67k chunks) takes ~45–50 min on M1 Pro CPU or ~22 min on Apple MPS. Not worth the rental setup overhead. |
-| **Colab** (free or Pro) | Same logic — only useful for the one-time embedding sweep, which the M1 Pro handles in 22–50 min. Colab's 12-h session limit makes long Groq runs *worse* on Colab. |
+| **RunPod / Lambda Labs** (GPU rental) | Almost everything is API-bound (Groq/OpenAI/Anthropic). The one CPU/GPU task (embedding ~67k chunks) measured **~6 h on Apple MPS** (2026-05-04) — but the cost is paid exactly once because the cell is resumable from `embeddings.npy` on disk. Rental setup overhead exceeds the saving. |
+| **Colab** (free or Pro) | Same logic — embedding would be ~9 min on a T4 vs ~6 h on MPS, but with a 12 h session limit and the cost paid only once locally, M1 Pro still wins on operational simplicity. Colab is *worse* for the long Groq runs in Phase 4. |
 | **vLLM / TGI** (self-hosted serving) | We're not self-hosting any model. Out of scope. |
 | **Pinecone**, **Weaviate**, **Qdrant** | Viable vector DBs but require external services. ChromaDB is simpler. |
 
@@ -213,7 +213,7 @@ When in doubt about an exact version, check `requirements.txt` — it's the auth
 This is fully covered in [`architecture.md` §8](architecture.md#8-hardware-split--m1-pro-16-gb-vs-google-colab). Short version:
 
 - **M1 Pro 16 GB does 100% of this thesis.** No GPU rental, no Colab dependency.
-- The only heavy local task is **embedding** (~25 min on CPU, ~12 min on Apple MPS).
+- The only heavy local task is **embedding** — measured **~6 h on Apple MPS** for 67,599 chunks (recalibrated 2026-05-04 from the original `~12 min MPS / ~25 min CPU` estimate; sustained-load thermal throttling + partial-MPS coverage on BGE-large). Cost is paid exactly once because the cell is resumable from `embeddings.npy`.
 - All long-running experiments (12,723-question Groq runs) execute on the M1 Pro overnight as backgrounded scripts. Use `caffeinate -dimsu &` to disable sleep.
 - Memory peak ~10 GB during embedding; comfortable within 16 GB.
 

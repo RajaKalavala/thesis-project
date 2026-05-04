@@ -321,7 +321,7 @@ When you're about to launch a 6-hour Groq run:
 
 ## 8. Hardware split — M1 Pro 16 GB vs Google Colab
 
-> **TL;DR for hardware:** the **M1 Pro does everything**. Colab gives you nothing for this thesis — every heavy workload is API-bound (Groq / OpenAI / Anthropic). The one task that benefits from a GPU is embedding the ~67k chunks once (~45–50 min on M1 Pro CPU, ~22 min on MPS, ~9 min on Colab T4) — not worth the Colab setup overhead.
+> **TL;DR for hardware:** the **M1 Pro does everything** but the one heavy CPU/GPU task (embedding) is **slower than initial projections suggested**. Embedding the ~67k chunks once measured **≈ 355 min on Apple MPS** (recalibrated 2026-05-04 after Notebook 02 ran) — first-batch timing predicts ~118 min, but sustained throughput degrades to ~16 s/batch over 6 hours (thermal throttling + partial-MPS coverage on BGE-large). Colab T4 would do this in ~9 min, but the setup overhead + 12 h session limit + cost of restarting on disconnect still favours running locally — and the cost is paid exactly once because the cell is resumable from `embeddings.npy` on disk.
 
 ### 8.1 What runs on M1 Pro — and how
 
@@ -329,7 +329,7 @@ When you're about to launch a 6-hour Groq run:
 |---|---|---|
 | Phase 1 — EDA | ✅ Trivial | <5 min, ~500 MB peak. Already done. |
 | Phase 2 — Chunking (Notebook 01) | ✅ Trivial | ~1–2 min CPU, <1 GB peak. |
-| Phase 2 — **Dense embedding** (Notebook 02, BGE-large only) | ⚠️ Slow but feasible | ~45–50 min on CPU, ~22 min on Apple MPS for ~67k chunks (single embedder per the locked plan; the dual-embedder plan was scoped out). 1.3 GB model footprint. |
+| Phase 2 — **Dense embedding** (Notebook 02, BGE-large only) | ⚠️ Slow but feasible | **~355 min measured on Apple MPS** for 67,599 chunks at batch 32 (≈ 6 h, recalibrated 2026-05-04 from the original ~22 min projection). 1.3 GB model footprint. Run is resumable: `embeddings.npy` is read from disk on subsequent runs of cell §6. |
 | Phase 2 — ChromaDB build | ✅ Trivial | Disk-based, ~1 min. |
 | Phase 2 — BM25 index | ✅ Trivial | Pure Python, ~30 s. |
 | Phase 2 — Smoke test (Notebook 03) | ✅ Trivial | 3 questions, ~30 s. |
@@ -347,7 +347,7 @@ When you're about to launch a 6-hour Groq run:
 
 | Task | Local M1 Pro | Colab T4 (free) | Worth Colab? |
 |---|---|---|---|
-| BGE-large embed ~67k chunks (one-time) | 45–50 min CPU / ~22 min MPS | ~9 min | **No — the setup overhead exceeds the speedup** |
+| BGE-large embed ~67k chunks (one-time) | **~355 min measured on MPS** (2026-05-04) | ~9 min on T4 | **No** — local run is resumable from `embeddings.npy`; the 6 h cost is paid exactly once |
 | Anything else in this thesis | Already API-bound or trivially CPU-bound | Same speed (Colab CPU ≈ M1 Pro CPU); GPU unused for API calls | **No** |
 
 **Colab pitfalls:**
@@ -356,7 +356,7 @@ When you're about to launch a 6-hour Groq run:
 - Colab Pro is $10/month if you genuinely need it, but for this thesis **you don't**.
 - Colab + Drive + your local repo = three places where files can drift out of sync. Sync discipline matters.
 
-**My recommendation:** keep all work on the M1 Pro. With MPS enabled, embedding is ~12 min — just run it locally and move on.
+**My recommendation:** keep all work on the M1 Pro. Embedding is the slow part (≈ 6 h on MPS, recalibrated 2026-05-04 from the original `~12 min` estimate) but the cost is paid exactly once and the cell is resumable from `embeddings.npy` on disk — every later notebook reads it in <1 second.
 
 ### 8.3 Apple MPS (the M1 Pro GPU) — when to enable it
 

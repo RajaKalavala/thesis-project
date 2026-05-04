@@ -181,7 +181,7 @@ This phase builds the artefacts every later notebook *loads*. Build them once an
 |---|---|
 | 1 | Load `chunks.parquet`. |
 | 2 | Load `BAAI/bge-large-en-v1.5` via `sentence-transformers`. **Important:** prepend BGE's recommended retrieval-passage prefix (no prefix for passages in v1.5; the query prefix `"Represent this sentence for searching relevant passages: "` is applied at *query* time inside `src/retrieval/`). |
-| 3 | Embed all chunks in batches of 32 (M1 Pro CPU ≈ 45–50 min, MPS ≈ 22 min — scaled from earlier ~25 min / ~12 min estimate when chunk count was assumed ~36k; actual is ~67k). Save to `data/processed/embeddings.npy` (float32, ~67k × 1024 ≈ 274 MB). |
+| 3 | Embed all chunks in batches of 32. **Measured wall-time on M1 Pro MPS for 67,599 chunks: ~355 min (≈ 6 h)** — far above the originally-projected `~22 min MPS / ~45–50 min CPU` figures. First-batch timing extrapolates to ~118 min, but sustained throughput degrades to ~16 s/batch over 6 hours (thermal throttling and/or partial-MPS coverage on BGE-large's 1024-d attention). Output is correct (norms = 1.0, shape (67599, 1024)); cost is paid once because §6 is resumable from `data/processed/embeddings.npy` (float32, ~67k × 1024 ≈ 277 MB). |
 | 4 | Initialise **persistent** ChromaDB: `chromadb.PersistentClient(path="data/indices/chroma_textbooks")`. Create collection `medqa_textbooks_bge_400` with `metadata={"hnsw:space": "cosine"}`. Add chunks in batches of 1,000 — pass `ids`, `embeddings`, `documents`, `metadatas={book_name, n_tokens}`. |
 | 5 | Build BM25 index over the same chunk text (lowercase + simple word-split). Save as `data/indices/bm25.pkl` alongside the chunk-id ordering. |
 | 6 | Sanity check: query *"What is the first-line treatment for community-acquired pneumonia?"* on both indices (ChromaDB dense + BM25 sparse). Top-3 from each should clearly relate to pneumonia/antibiotics; if not, debug before proceeding. |
@@ -498,7 +498,7 @@ If every experiment writes its `summary.json` with **exactly the column names fr
 | Phase | Compute | API cost |
 |---|---|---|
 | Phase 1 (EDA) ✓ | 5 min CPU | $0 |
-| Phase 2 (chunk + embed once + ChromaDB + BM25) | ~25 min CPU | $0 |
+| Phase 2 (chunk + embed once + ChromaDB + BM25) | **~6 h MPS measured** (chunk ~1 min · embed ~355 min · Chroma 1m 39s · BM25 8 s — recalibrated 2026-05-04 from the original ~25 min estimate) | $0 |
 | Phase 3 (golden 300, staged 50 pilot + 250 production) — GPT-4o full | ~1.5–2 h | ~$12 GPT-4o |
 | Phase 4 (Group A · 5 experiments × 12,723) | ~30–40 h Groq | small, Groq is cheap |
 | Phase 4 RAGAS judge (5 archs × 300 × 5 metrics) | ~1.5 h | ~$10–15 Claude 3.5 Sonnet |
