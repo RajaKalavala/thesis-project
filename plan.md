@@ -21,7 +21,7 @@
 | 7 | Multi-Hop budget | **3 hops max** | Proposal §7.6.4. |
 | 8 | Evaluation surface (full) | **All 12,723 MedQA US questions** | Train + dev + test combined — canonical benchmark scope per the corrected workbook. |
 | 9 | Golden RAGAS reference subset | **Stratified 300 questions** built from scratch in two stages: 50-row smoke pilot → 250 more for production (= 300 total) | Drives Faithfulness, Context Recall, Context Precision, Answer Correctness on 300 rows; the remaining 12,423 still get exact-match accuracy and retrieval recall. Sized for cost-efficiency while preserving per-stratum analysis room (≥ 60 rows per `question_type` bucket). |
-| 10 | Golden-set **constructor** LLM | **`gpt-4o`** (full, not mini) — three-pass JSON pipeline | Strict-JSON 3-pass construction needs the stronger model; mini drops more under structured-output stress. ~$12 for 300 questions. |
+| 10 | Golden-set **constructor** LLM | **`openai/gpt-oss-120b`** via Groq — three-pass JSON pipeline | Recalibrated 2026-05-04 from `gpt-4o` (was ~$12) to OpenAI's open-weights 120B model running on Groq's free tier. Preserves the methodologically-important 3-family separation (Meta generator / OpenAI constructor / Anthropic judge) at $0 cost. The original GPT-4o was specced for the strict-JSON multi-pass reliability; `gpt-oss-120b` is the strongest open-weights model on Groq and is OpenAI-engineered for the same kind of structured output. **Smoke pilot first** (50 rows) to verify accept rate ≥ 80 % and JSON malformation < 5 %; fall back to GPT-4o-mini ($3) if either bound fails. |
 | 11 | RAGAS **judge** LLM | **`claude-3-5-sonnet`** (Anthropic) — different family from generator AND constructor | Kills evaluator-on-evaluator bias. ~$10–15 across 300 golden × 5 metrics × 5 architectures. |
 | 12 | Top-k passed to LLM | **k=5** | Tune in EXP_02 if Context Recall is the bottleneck. |
 
@@ -137,7 +137,7 @@ thesis-project/
 ├── requirements.txt                   ✓
 ├── .venv/                             ✓
 ├── .gitignore                         ✓
-└── .env                               ← GROQ_API_KEY, OPENAI_API_KEY
+└── .env                               ← GROQ_API_KEY (generator + constructor), ANTHROPIC_API_KEY (judge)
 ```
 
 ---
@@ -219,17 +219,17 @@ The full RAGAS suite needs **reference contexts** and **reference answers** that
 |---|---|
 | **A. Stratified sampling — 300 of 12,723** | From the 4-option dataset. Stratify across `meta_info` (Step 1 / Step 2&3) × length bucket (≤120 words / 121–200 / >200). Force 60 long-vignette rows so the multi-hop architecture has a fair test surface. Random seed = 42. |
 | **B. Hybrid retrieval per question** | For each sampled row: BGE-large query (with prefix) + BM25 + RRF k=60 → top-10 candidate chunks. Construction-time only: include the gold answer text in the search query (`question + " " + answer + " " + " ".join(metamap_phrases[:8])`). The bias toward retrieving answer-supporting chunks is intentional during golden-set construction. |
-| **C. GPT-4o evidence selection (Pass 1)** | Prompt **`gpt-4o`** (full, not mini) with question + correct answer + 10 candidate passages. Returns: 1–3 strongest supporting passages, 3–8 medical keywords, `is_evidence_sufficient`. Temperature 0, JSON mode. |
-| **D. GPT-4o reference answer (Pass 2)** | Prompt **`gpt-4o`** with question + correct answer + selected gold context. Returns: one-sentence `reference_answer`, 3–6 sentence `reference_explanation` grounded in the gold context, `why_other_options_are_less_suitable`, `hallucination_check_points` (atomic claims a faithful generation must cover), `question_type` ∈ {diagnosis, treatment, mechanism, management, other}, `requires_multihop` (yes/no). Temperature 0.2, JSON mode. |
-| **E. GPT-4o validation (Pass 3)** | Prompt **`gpt-4o`** to score each row 0–5 on evidence relevance, faithfulness, explanation quality. Assess hallucination risk (low/medium/high). Decide `final_status` ∈ {accepted, needs_review, rejected}. Temperature 0, JSON mode. |
+| **C. Constructor evidence selection (Pass 1)** | Prompt **`openai/gpt-oss-120b`** (via Groq, free) with question + correct answer + 10 candidate passages. Returns: 1–3 strongest supporting passages, 3–8 medical keywords, `is_evidence_sufficient`. Temperature 0, JSON mode. |
+| **D. Constructor reference answer (Pass 2)** | Prompt **`openai/gpt-oss-120b`** with question + correct answer + selected gold context. Returns: one-sentence `reference_answer`, 3–6 sentence `reference_explanation` grounded in the gold context, `why_other_options_are_less_suitable`, `hallucination_check_points` (atomic claims a faithful generation must cover), `question_type` ∈ {diagnosis, treatment, mechanism, management, other}, `requires_multihop` (yes/no). Temperature 0.2, JSON mode. |
+| **E. Constructor validation (Pass 3)** | Prompt **`openai/gpt-oss-120b`** to score each row 0–5 on evidence relevance, faithfulness, explanation quality. Assess hallucination risk (low/medium/high). Decide `final_status` ∈ {accepted, needs_review, rejected}. Temperature 0, JSON mode. |
 | **F. Automated audit** | Pure-Python checks (no LLM): (i) gold answer text appears in `reference_answer`; (ii) all `evidence_keywords` appear in `gold_context`; (iii) every cited `chunk_id` exists in `chunks.parquet`. Any failure ⇒ `quality_status = "needs_review"`. |
 | **G. Save** | Accepted rows → `golden_ragas_300.jsonl` (target ≥ 220 accepted; needs_review and rejected to companion files). |
 
-**Cost estimate.** ~300 × 3 GPT-4o passes ≈ **$10–14** total (50-row pilot ≈ $2, production +250 ≈ $10). GPT-4o is ~30× pricier than GPT-4o-mini but materially better at strict-JSON multi-pass tasks; for 300 rows the absolute cost difference is small and the quality lift on Pass 2 (reference-explanation generation) is significant. Wall time ~1.5–2 hours total with reasonable rate-limit handling.
+**Cost estimate.** ~300 × 3 constructor passes on Groq's free tier ≈ **$0** (recalibrated 2026-05-04 from `~$10–14 GPT-4o`). Wall time ~1.5–2 hours total, dominated by rate-limit handling on Groq's per-minute token quota.
 
-**Why `gpt-4o` (full) for the constructor:** the 3-pass JSON-strict pipeline depends on reliable structured output and strong reasoning at Pass 2 (where the reference explanation is *generated*, not just judged). GPT-4o-mini drops more under structured-output stress; for a one-time golden-set build we trade ~$35 for materially better reference quality.
+**Why `openai/gpt-oss-120b` for the constructor:** the 3-pass JSON-strict pipeline depends on reliable structured output and strong reasoning at Pass 2 (where the reference explanation is *generated*, not just judged). `gpt-oss-120b` is OpenAI's largest open-weights release (engineered for the same JSON-mode behaviour as GPT-4o) and runs free on Groq. **Pilot-then-decide:** the 50-row pilot validates accept rate ≥ 80 % and JSON malformation < 5 %; if either bound fails the fallback is GPT-4o-mini (~$3 for 300 rows) and only as a last resort full GPT-4o (~$12).
 
-**Why a different family for the judge:** the constructor is OpenAI/GPT-4o. The answerer (Phase 4) is LLaMA. The RAGAS judge in Phase 4 is **Claude 3.5 Sonnet** — a third family — to kill evaluator-on-evaluator bias on metrics where the reference answer (constructor output) is consumed by the judge (Context Recall, Context Precision, Answer Correctness).
+**Why a different family for the judge:** the constructor is OpenAI/`gpt-oss-120b`. The answerer (Phase 4) is LLaMA. The RAGAS judge in Phase 4 is **Claude 3.5 Sonnet** — a third family — to kill evaluator-on-evaluator bias on metrics where the reference answer (constructor output) is consumed by the judge (Context Recall, Context Precision, Answer Correctness). The judge stays on the paid API because RAGAS metrics like Faithfulness require sub-statement-level hallucination detection where Claude/GPT-4-class judges are validated against human raters far more thoroughly than open-weights alternatives.
 
 **Why build from scratch:** earlier exploratory work used MiniLM + 200-token chunks; those artefacts have been deleted. Building fresh against the new BGE-large + 400/80-token index ensures every `chunk_id` reference is valid.
 
@@ -499,7 +499,7 @@ If every experiment writes its `summary.json` with **exactly the column names fr
 |---|---|---|
 | Phase 1 (EDA) ✓ | 5 min CPU | $0 |
 | Phase 2 (chunk + embed once + ChromaDB + BM25) | **~6 h MPS measured** (chunk ~1 min · embed ~355 min · Chroma 1m 39s · BM25 8 s — recalibrated 2026-05-04 from the original ~25 min estimate) | $0 |
-| Phase 3 (golden 300, staged 50 pilot + 250 production) — GPT-4o full | ~1.5–2 h | ~$12 GPT-4o |
+| Phase 3 (golden 300, staged 50 pilot + 250 production) — `gpt-oss-120b` via Groq | ~1.5–2 h | **$0** (recalibrated 2026-05-04 from ~$12 GPT-4o; fallback to GPT-4o-mini ~$3 if open-weights pilot fails) |
 | Phase 4 (Group A · 5 experiments × 12,723) | ~30–40 h Groq | small, Groq is cheap |
 | Phase 4 RAGAS judge (5 archs × 300 × 5 metrics) | ~1.5 h | ~$10–15 Claude 3.5 Sonnet |
 | Phase 5 (adaptive) | ~10 h Groq | small |
@@ -512,7 +512,7 @@ If every experiment writes its `summary.json` with **exactly the column names fr
 
 The dominant cost is **wall-clock**, not money. Disk-cache every Groq + Claude + GPT-4o response by `(experiment_id, question_id, prompt_hash)` so resuming after a rate-limit pause is free.
 
-**API key inventory:** `GROQ_API_KEY` (LLaMA generation), `OPENAI_API_KEY` (GPT-4o constructor + optional GPT-4o-mini taxonomy classifier), `ANTHROPIC_API_KEY` (Claude 3.5 Sonnet RAGAS judge). Demo UI in cached mode needs **none** of these keys.
+**API key inventory:** `GROQ_API_KEY` (LLaMA generator + `gpt-oss-120b` constructor — both via Groq), `ANTHROPIC_API_KEY` (Claude 3.5 Sonnet RAGAS judge). `OPENAI_API_KEY` is now optional — only needed if the open-weights pilot fails and you fall back to GPT-4o-mini ($3) for the constructor. Demo UI in cached mode needs **none** of these keys.
 
 ---
 
@@ -540,7 +540,7 @@ You're at the end of Phase 1. Phase 2 unblocks everything else.
 
 1. **Now → next session:** build Notebook 01 (chunking) and Notebook 02 (BGE-large embeddings + ChromaDB + BM25). 1 day of work end-to-end including the smoke test in Notebook 03.
 2. **Following session:** build the `src/` skeleton modules (`retrieval/`, `generation/`, `eval/runner.py`).
-3. **Then:** Notebook 04 — golden RAGAS dataset construction (50-row pilot first ~$2, then 250 more for production = 300 total ~$10). Add `OPENAI_API_KEY` to `.env` first.
+3. **Then:** Notebook 04 — golden RAGAS dataset construction (50-row pilot first to validate `gpt-oss-120b` quality, then 250 more for production = 300 total). All on Groq's free tier ($0). `GROQ_API_KEY` already in `.env`.
 4. **(Optional) Right after Phase 3:** Phase 10 Stage A — Streamlit scaffolding with mock data. **The key reason to do Stage A here**: it forces you to lock `summary.json` shape before any expensive experiment runs, saving rework later.
 5. **Then:** Phase 4 — run EXP_01 → EXP_05 sequentially. Tables 1, 8, 9 fill from these. (UI Stage B wires up incrementally as outputs arrive.)
 6. **Then:** Phase 5 → 6 → 7 → 8 → 9 in order. Each one consumes outputs of the prior.

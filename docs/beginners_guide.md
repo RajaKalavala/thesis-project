@@ -157,7 +157,7 @@ When the user later asks "What's a NSAID?", the question itself gets a fingerpri
 
 ### Step 4 — Build a "study guide" (the golden dataset)
 
-**What you'll do.** Take **300** of the 12,723 questions (sized for budget-efficiency — see plan.md §0 #9). For each one, ask GPT-4o to:
+**What you'll do.** Take **300** of the 12,723 questions (sized for budget-efficiency — see plan.md §0 #9). For each one, ask `openai/gpt-oss-120b` (running free on Groq, recalibrated 2026-05-04 from GPT-4o) to:
 1. Find the *exact* textbook passage that supports the right answer.
 2. Write a 3-sentence reference explanation grounded in that passage.
 3. List the atomic claims that any correct answer must cover.
@@ -171,9 +171,9 @@ When the user later asks "What's a NSAID?", the question itself gets a fingerpri
   - Reference explanation: "The clinical picture suggests disseminated gonococcal infection. Ceftriaxone, a third-generation cephalosporin, is the recommended treatment because it inhibits bacterial cell-wall synthesis and is effective against Neisseria gonorrhoeae."
   - Atomic claims: ["The answer must identify Ceftriaxone", "The mechanism must mention cell-wall synthesis", "The organism must be Neisseria gonorrhoeae"]
 
-**Smoke test (CRITICAL).** Build **50 questions first** before the rest of the 300. Costs ~$2 instead of ~$12. If the GPT-4o pipeline has a bug (wrong JSON format, hallucinated chunk IDs, weird prompts), you find out cheaply. Only after the 50-row pilot looks clean do you build the remaining 250.
+**Smoke test (CRITICAL).** Build **50 questions first** before the rest of the 300. Costs **$0** with the open-weights `gpt-oss-120b` constructor (recalibrated 2026-05-04 — was ~$2 with GPT-4o). The 50-row pilot is now also the **quality gate**: if accept rate drops below 80 % or JSON malformation exceeds 5 %, fall back to GPT-4o-mini ($1 pilot / $3 full) before scaling to 250 more.
 
-**Cost / time.** ~$12 total ($2 pilot + $10 production) + ~1.5–2 hours wall-clock. Only GPT-4o calls; the M1 Pro just orchestrates.
+**Cost / time.** **$0** on the locked plan (Groq free tier, `gpt-oss-120b` for all 300 rows) + ~1.5–2 hours wall-clock. The M1 Pro just orchestrates. Fallback ladder if pilot fails: GPT-4o-mini (~$3 for 300) → full GPT-4o (~$12).
 
 ---
 
@@ -341,7 +341,7 @@ That's 6 thesis-defensible claims from one experiment programme. Plus the method
    ┌──────────────────┐     ┌────────────────────────────┐
    │ Step 4: Build    │     │ Step 5: Run 5 chefs over   │
    │ golden 300       │     │ all 12,723 questions       │
-   │ (with GPT-4o)    │     │ — both embedders for the 3 │
+   │ (gpt-oss-120b)   │     │ — both embedders for the 3 │
    └─────────┬────────┘     │ dense-retrieval ones       │
              │              └─────────────┬──────────────┘
              └─────┬────────────────────┘
@@ -392,7 +392,7 @@ You're done with the project when:
 
 This is the same as `plan.md` §16 but in beginner language:
 
-1. **Right now:** make sure your `.env` has all 3 API keys (Groq, OpenAI, Anthropic). Confirm they work with a 3-call smoke test.
+1. **Right now:** make sure your `.env` has the **2 required** API keys: `GROQ_API_KEY` (generator + constructor — both via Groq) and `ANTHROPIC_API_KEY` (RAGAS judge). `OPENAI_API_KEY` is now optional. Confirm with a 3-call smoke test.
 2. **Next session:** Notebook 01 — chunk the textbooks. Eyeball 5 chunks; do they look sensible?
 3. **Following session:** Notebook 02 — embed everything (twice) + build indices. Smoke-query *"pneumonia treatment"*; do the top 3 results mention pneumonia?
 4. **Then:** Build a few `src/` modules (loaders, the Groq client, the cache decorator).

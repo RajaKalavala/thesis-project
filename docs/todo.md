@@ -14,8 +14,8 @@
 - [x] Python 3.12 venv at `.venv/`, requirements installed, Jupyter kernel `thesis-rag` registered
 - [x] `.gitignore` covers venv, processed data, indices, results, secrets
 - [x] All 11 stack decisions locked in [plan.md §0](../plan.md#0-locked-decisions)
-- [ ] `.env` populated with **three** API keys: `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
-  - Deliverable: `.venv/bin/python -c "import os; from dotenv import load_dotenv; load_dotenv(); print({k: '✓' if os.getenv(k) else '✗' for k in ['GROQ_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY']})"` shows all three ✓
+- [ ] `.env` populated with **two required** API keys (recalibrated 2026-05-04): `GROQ_API_KEY` (generator + constructor) and `ANTHROPIC_API_KEY` (RAGAS judge). `OPENAI_API_KEY` is now optional — only needed if the open-weights constructor pilot fails.
+  - Deliverable: `.venv/bin/python -c "import os; from dotenv import load_dotenv; load_dotenv(); print({k: '✓' if os.getenv(k) else '✗' for k in ['GROQ_API_KEY','ANTHROPIC_API_KEY']})"` shows both ✓
 
 ---
 
@@ -93,17 +93,17 @@ Build in this dependency order. Add a 3-question unit test against `chunks.parqu
 
 ### Notebook 04 — `notebooks/04_golden_ragas_dataset.ipynb`
 
-- [ ] **Stage 0 (smoke pilot, mandatory)** — Sample **50** stratified questions, run all stages A–G end-to-end on this subset, save to `golden_ragas_50_pilot.jsonl`. Cost ~$2. Verify Pass-1 sufficiency rate ≥ 90%, all `chunk_id`s resolve, `requires_multihop` rate < 60%. Iterate prompts if any check fails.
+- [ ] **Stage 0 (smoke pilot, mandatory)** — Sample **50** stratified questions, run all stages A–G end-to-end on this subset, save to `golden_ragas_50_pilot.jsonl`. **Cost: $0** (Groq free tier with `gpt-oss-120b`, recalibrated 2026-05-04 from ~$2 GPT-4o). **Pilot quality gate:** accept rate ≥ 80 %, JSON malformation < 5 %, Pass-1 sufficiency rate ≥ 90 %, all `chunk_id`s resolve, `requires_multihop` rate < 60 %. If any gate fails → fall back to GPT-4o-mini (~$1 for the pilot, ~$3 for full 300).
 - [ ] **Stage A** — Stratified sample 300 total of 12,723 (4-option). 50 from the pilot + 250 fresh. Stratify by `meta_info` × length bucket; force 60 long-vignettes. Seed 42.
 - [ ] **Stage B** — Hybrid retrieval (BGE + BM25 + RRF k=60) → top-10 candidates per question. Construction-time only: include gold answer text + first 8 metamap phrases in the search query.
-- [ ] **Stage C — Pass 1** — `gpt-4o` evidence selection (temp 0, JSON mode) → 1–3 strongest passages, 3–8 medical keywords, `is_evidence_sufficient`
-- [ ] **Stage D — Pass 2** — `gpt-4o` reference answer + explanation (temp 0.2, JSON mode) → `reference_answer`, `reference_explanation`, `why_other_options_are_less_suitable`, `hallucination_check_points`, `question_type`, `requires_multihop`
-- [ ] **Stage E — Pass 3** — `gpt-4o` validation (temp 0, JSON mode) → 0–5 scores + `final_status`
+- [ ] **Stage C — Pass 1** — `openai/gpt-oss-120b` (via Groq) evidence selection (temp 0, JSON mode) → 1–3 strongest passages, 3–8 medical keywords, `is_evidence_sufficient`
+- [ ] **Stage D — Pass 2** — `openai/gpt-oss-120b` reference answer + explanation (temp 0.2, JSON mode) → `reference_answer`, `reference_explanation`, `why_other_options_are_less_suitable`, `hallucination_check_points`, `question_type`, `requires_multihop`
+- [ ] **Stage E — Pass 3** — `openai/gpt-oss-120b` validation (temp 0, JSON mode) → 0–5 scores + `final_status`
 - [ ] **Stage F — Audit** — Pure-Python: gold answer in reference_answer; evidence_keywords in gold_context; chunk_ids resolvable in chunks.parquet
 - [ ] **Stage G — Save** — `data/processed/golden_ragas_300.jsonl` (accepted) + companion `_needs_review.jsonl` + `_dropped.jsonl`
 - [ ] Manually spot-check 30 accepted rows for grounding quality
 - [ ] Multi-hop label audit: spot-check 10 `requires_multihop=yes` rows; if rate > 50%, tighten the Pass-2 prompt definition and re-run those rows
-- **Deliverable:** ≥ 220 accepted rows out of 300; rate of `requires_multihop=yes` < 50%; total construction cost ≤ $14
+- **Deliverable:** ≥ 220 accepted rows out of 300; rate of `requires_multihop=yes` < 50%; total construction cost **$0** on the locked plan (`gpt-oss-120b` via Groq free tier; recalibrated 2026-05-04 from ≤ $14 GPT-4o). Fallback ladder if pilot fails: GPT-4o-mini ($3) → GPT-4o full ($12).
 
 ---
 
@@ -338,6 +338,7 @@ When all 16 experiments are done:
 | 2026-05-04 | **BGE-large embed time recalibrated again**: ~22 min MPS → **~355 min MPS** measured | plan.md §0 #2 + §4 + §14; docs/architecture.md §8; docs/tech_stack.md; memory/project_thesis_overview.md | Notebook 02 §6 actual wall-time 354.9 min on M1 Pro MPS for 67,599 chunks at batch 32. First-batch timing extrapolated to ~118 min, but sustained throughput degraded to ~16 s/batch over 6 hours — thermal throttling and/or partial-MPS coverage on BGE-large's 1024-d attention. **Output is correct** (norms = 1.0, shape (67599,1024), retrieval works on the smoke query). The cost is paid once: `embeddings.npy` is now on disk and §6 is resumable. No re-embed needed; just update plan estimates so future-you doesn't believe the 22-min figure. |
 | 2026-05-04 | **`chromadb>=0.5,<0.6` + `transformers>=4.46,<5.0` pinned** in `requirements.txt` | requirements.txt | chromadb 0.5 transitively requires `tokenizers<0.21`, which is incompatible with `transformers 5.x` (needs `tokenizers>=0.22`). Pinning transformers to the 4.x line keeps both libraries co-installable. Both work at runtime despite a cosmetic pip-resolver warning. Telemetry warnings silenced via `Settings(anonymized_telemetry=False)` + `ANONYMIZED_TELEMETRY=False` env var. |
 | 2026-05-04 | **Phase 2 fully complete** (Notebooks 01 + 02 + 03 all run end-to-end with verified outputs) | docs/todo.md §2.1, §2.2, §2.3; memory/project_thesis_overview.md | All four shared infrastructure artefacts on disk: `chunks.parquet` (67,599) · `embeddings.npy` (67,599 × 1024) · `chroma_textbooks/` (cosine HNSW, count parity ✓) · `bm25.pkl`. Notebook 03 smoke test: 3 / 3 letters parsed, mean latency 1.38 s, disk cache operational. Q1's wrong answer (Avoidant labelled as Schizoid) was an *informative retrieval miss* — top-5 returned general personality-disorder content but no Cluster-C specifics. Methodology finding worth recording: Naive RAG insufficient when answer label isn't named in the question stem; motivates Hybrid RAG (EXP_04). |
+| 2026-05-04 | **Constructor swap: GPT-4o → `openai/gpt-oss-120b` via Groq** (~$12 → $0) | plan.md §0 #10, §5 stages C–E + cost paragraph + §14 budget + §16; docs/tech_stack.md §3 + §4; docs/architecture.md §0 + §3.4 + §8.1; docs/todo.md §0 + §4 stages; memory/project_thesis_overview.md | Path #2 from the cost-vs-methodology trade discussion (2026-05-04). OpenAI's open-weights 120B model preserves the 3-family separation (Meta gen / OpenAI cons / Anthropic judge) at $0 because Groq hosts it free. Judge stays Claude 3.5 Sonnet ($10–15) — Faithfulness scoring is too sensitive to use an open-weights judge without methodological doubt. **50-row pilot is now the quality gate**: accept rate ≥ 80 %, JSON malformation < 5 %. Fallback ladder if pilot fails: GPT-4o-mini ($3) → GPT-4o full ($12). `OPENAI_API_KEY` becomes optional. |
 
 ---
 

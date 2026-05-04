@@ -7,7 +7,8 @@
       "Bash(.venv/bin/python -c \"from langchain_text_splitters import RecursiveCharacterTextSplitter; import tiktoken; enc = tiktoken.get_encoding\\('cl100k_base'\\); print\\('OK splitter+tiktoken; sample tokens for hello world =', len\\(enc.encode\\('hello world'\\)\\)\\)\")",
       "Bash(mkdir -p /Users/rajak/Workstation/Projects/myGitHub/thesis-project/src/data)",
       "Bash(touch /Users/rajak/Workstation/Projects/myGitHub/thesis-project/src/__init__.py /Users/rajak/Workstation/Projects/myGitHub/thesis-project/src/data/__init__.py)",
-      "Bash(.venv/bin/python -c ' *)"
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(grep -n \"[$][0-9]\" docs/todo.md)"
     ]
   }
 }

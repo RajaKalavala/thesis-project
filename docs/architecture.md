@@ -14,7 +14,7 @@ Five rules. Everything else follows from these.
 |---|---|---|
 | 1 | **Build infrastructure once, reuse it 16 times** | One chunked corpus, one set of indices, one LLM client, one evaluator — all 16 experiments are thin orchestration on top |
 | 2 | **Notebooks orchestrate; `src/` does the work** | Code that's used twice belongs in `src/`. Notebooks are reproducible recipes, not where the algorithm lives |
-| 3 | **Cache every API call to disk** | Resuming a stopped run is free. Re-running an experiment after a bug fix doesn't re-bill OpenAI/Anthropic |
+| 3 | **Cache every API call to disk** | Resuming a stopped run is free. Re-running an experiment after a bug fix doesn't re-bill Groq/Anthropic |
 | 4 | **One source of truth for each fact** | Locked decisions live in [plan.md §0](../plan.md#0-locked-decisions). Tech stack rationale in [tech_stack.md](tech_stack.md). Data shapes in [dataset.md](dataset.md). Working state in [todo.md](todo.md). Code follows. |
 | 5 | **Idempotent pipelines** | Re-running notebook 02 with no changes should be a near-no-op (cached embeddings, cached indices). New chunk size? Bump a version flag, regenerate, everything downstream invalidates cleanly |
 
@@ -80,10 +80,9 @@ src/
 │   ├── complexity.py          # rule-based labeller (EXP_06)
 │   └── adaptive.py            # router using complexity labels (EXP_07)
 ├── generation/
-│   ├── groq_client.py         # LLaMA 3.3 70B, with disk cache + retry
-│   ├── openai_client.py       # GPT-4o for golden-set construction
+│   ├── groq_client.py         # Groq client (LLaMA 3.3 70B answerer + gpt-oss-120b constructor)
 │   ├── anthropic_client.py    # Claude 3.5 Sonnet for RAGAS judge
-│   └── prompts.py             # base prompt + No-RAG variant + Multi-Hop variant
+│   └── prompts.py             # base evidence-grounded + No-RAG + Multi-Hop + golden-set construction prompts
 ├── eval/
 │   ├── non_llm_metrics.py     # exact match, retrieval recall@k, MRR, nDCG@k
 │   ├── ragas_eval.py          # RAGAS suite, Claude as judge
@@ -162,7 +161,7 @@ class BaseConfig:
     rrf_k: int = 60
     multi_hop_budget: int = 3
 
-    constructor_model: str = "gpt-4o"
+    constructor_model: str = "openai/gpt-oss-120b"  # via Groq, recalibrated 2026-05-04 from "gpt-4o"
     judge_model: str = "claude-3-5-sonnet-20241022"
 
 @dataclass(frozen=True)
@@ -333,13 +332,13 @@ When you're about to launch a 6-hour Groq run:
 | Phase 2 — ChromaDB build | ✅ Trivial | Disk-based, ~1 min. |
 | Phase 2 — BM25 index | ✅ Trivial | Pure Python, ~30 s. |
 | Phase 2 — Smoke test (Notebook 03) | ✅ Trivial | 3 questions, ~30 s. |
-| Phase 3 — **Golden RAGAS dataset** (Notebook 04) | ✅ API-bound | All compute is OpenAI API calls. M1 Pro just orchestrates. ~4–6 h wall-clock, network-stable required. |
+| Phase 3 — **Golden RAGAS dataset** (Notebook 04) | ✅ API-bound | All compute is Groq API calls (`gpt-oss-120b` constructor — recalibrated 2026-05-04 from GPT-4o). M1 Pro just orchestrates. ~1.5–2 h wall-clock, network-stable required. |
 | Phase 4 — **Group A (5 experiments × 12,723)** | ✅ API-bound (long) | All compute is Groq API. M1 Pro orchestrates + caches. ~30–40 h wall-clock total. Run as backgrounded Python scripts overnight. |
 | Phase 4 — RAGAS judging | ✅ API-bound | Anthropic API. ~2 h wall-clock for all architectures × 300 golden × 5 metrics. |
 | Phase 5 — Adaptive RAG | ✅ API-bound | ~10 h Groq. |
 | Phase 6 — LIME / SHAP | ✅ Mostly API-bound | Local: small linear models, perturbation logic. Remote: Groq for re-prompting. ~6–10 h. |
 | Phase 7 — Confidence | ✅ Trivial | Pure Python aggregation, no LLM calls. <30 min. |
-| Phase 8 — Taxonomy | ✅ Mostly local | Manual labelling + small scikit-learn classifier. <1 h compute. Optional GPT-4o-mini classifier ~5 min. |
+| Phase 8 — Taxonomy | ✅ Mostly local | Manual labelling + small scikit-learn classifier. <1 h compute. Optional `gpt-oss-20b` (Groq, free) classifier ~5 min. |
 | Phase 9 — Final synthesis | ✅ Trivial | Pandas aggregation, plotting. <30 min. |
 | Thesis writing | ✅ | Markdown + LaTeX + your favourite editor. |
 

@@ -28,7 +28,8 @@
 | The **proposal mapping** (PDF §X → implementation) | [`thesis_understanding.md`](thesis_understanding.md) |
 | Why **BGE-large** was chosen and **MedEmbed dropped** | [`tech_stack.md` §3.1](tech_stack.md) |
 | Why **ChromaDB** instead of FAISS | [`tech_stack.md` §3.2](tech_stack.md) |
-| Why **Claude as judge** vs GPT-4o-mini | [`tech_stack.md` §3.4](tech_stack.md) |
+| Why **Claude as judge** vs open-weights or GPT-4o-mini | [`tech_stack.md` §3.4](tech_stack.md) |
+| Why **`gpt-oss-120b` as constructor** vs GPT-4o (the swap) | [`tech_stack.md` §3.5](tech_stack.md) |
 | Whether to use **LangChain / LangSmith / RunPod / Colab** | [`tech_stack.md` §3.6](tech_stack.md) |
 | The **MedQA dataset schema** | [`dataset.md` §2.2](dataset.md) |
 | The **18-textbook corpus stats** + Harrison-bias note | [`dataset.md` §3](dataset.md) |

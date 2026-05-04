@@ -16,10 +16,10 @@
    ┌──────────────────────────────┼──────────────────────────────┐
    ▼                              ▼                              ▼
 DATA & EDA                  RETRIEVAL                       GENERATION
-pandas · numpy              langchain (chunker only)        groq (LLaMA)
-pyarrow · matplotlib        sentence-transformers           openai (GPT-4o)
-seaborn · jupyter           ChromaDB · rank-bm25            anthropic (Claude)
-                            tiktoken
+pandas · numpy              langchain (chunker only)        groq (LLaMA generator
+pyarrow · matplotlib        sentence-transformers                  + gpt-oss-120b
+seaborn · jupyter           ChromaDB · rank-bm25                   constructor)
+                            tiktoken                        anthropic (Claude judge)
    ▼                              ▼                              ▼
 EVALUATION                  EXPLAINABILITY                  SAFETY & DEMO
 RAGAS                       LIME · SHAP                     custom confidence
@@ -67,8 +67,8 @@ scikit-learn                                                Streamlit (optional)
 | Role | Provider | Model | API SDK | Why a different family |
 |---|---|---|---|---|
 | **Answerer** (the system under test) | Groq Cloud | `llama-3.3-70b-versatile` | `groq` | Fast LPU inference; 131k context; open-weights LLaMA reproducible |
-| **Golden-set constructor** (Phase 3) | OpenAI | `gpt-4o` (full, not mini) | `openai` | Strict-JSON 3-pass construction; mini drops more under structured-output stress |
-| **RAGAS judge** (Phase 4) | Anthropic | `claude-3-5-sonnet-20241022` | `anthropic` | Different family from BOTH generator (LLaMA) and constructor (GPT-4o) — kills evaluator-on-evaluator bias |
+| **Golden-set constructor** (Phase 3) | Groq Cloud (OpenAI open-weights) | `openai/gpt-oss-120b` | `groq` | Recalibrated 2026-05-04 from `gpt-4o`. OpenAI's largest open-weights release running free on Groq — preserves the 3-family separation (Meta gen / OpenAI cons / Anthropic judge) at $0. Pilot-validated on 50 rows before scaling. |
+| **RAGAS judge** (Phase 4) | Anthropic | `claude-3-5-sonnet-20241022` | `anthropic` | Different family from BOTH generator (LLaMA) and constructor (`gpt-oss-120b`) — kills evaluator-on-evaluator bias. Stays on the paid API: Faithfulness scoring requires sub-statement hallucination detection where Claude is validated against human raters far more thoroughly than open-weights judges. |
 
 The three-family separation is **load-bearing** for the methodology defence: every metric the judge produces is from a model that was not involved in writing the references or generating the answers.
 
@@ -141,15 +141,23 @@ This section records what we *thought* about and *didn't* pick, so the methodolo
 **Locked:** `claude-3-5-sonnet-20241022`.
 
 **Rejected (with reason):**
-- `gpt-4o-mini` as judge — same family as GPT-4o constructor → mild evaluator-on-evaluator bias on metrics that consume the reference (Context Recall/Precision, Answer Correctness). For ~$50 extra, Claude removes that risk entirely.
+- `gpt-4o-mini` as judge — same OpenAI family as the constructor → mild evaluator-on-evaluator bias on metrics that consume the reference (Context Recall/Precision, Answer Correctness). For ~$10–15, Claude removes that risk entirely.
 - LLaMA 3.3 70B as judge — same family as the answerer. Forbidden by methodology principle.
+- Open-weights judge (`gpt-oss-120b`, `qwen3-32b`) — RAGAS Faithfulness scoring requires sub-statement hallucination detection where open-weights models have weaker validation against human raters than Claude/GPT-4-class judges. Saving $10–15 here is not worth introducing methodological doubt on every Faithfulness number in the results chapter.
 
-### 3.5 Golden-set constructor — **GPT-4o (full)**
+### 3.5 Golden-set constructor — **`openai/gpt-oss-120b` via Groq**
 
-**Locked:** `gpt-4o`.
+**Locked (recalibrated 2026-05-04 from `gpt-4o`):** `openai/gpt-oss-120b` running on Groq's free tier.
+
+**Why the swap.** OpenAI's largest open-weights release (engineered for the same JSON-mode behaviour as GPT-4o) runs free on Groq. Preserves the methodologically-load-bearing 3-family separation (Meta generator / OpenAI constructor / Anthropic judge) at $0 instead of $12. The 50-row pilot acts as the quality gate: accept rate ≥ 80 % and JSON malformation < 5 % ⇒ continue with `gpt-oss-120b`; otherwise fall back.
+
+**Fallback ladder if pilot fails:**
+1. `gpt-4o-mini` (~$3 for 300 rows) — same OpenAI family lineage, paid API, more reliable JSON
+2. `gpt-4o` full (~$12 for 300 rows) — original locked choice, last resort
 
 **Rejected (with reason):**
-- `gpt-4o-mini` — ~30× cheaper but less reliable on strict-JSON multi-pass tasks. For 300 rows, full GPT-4o is ~$12 vs ~$1 for mini; the cost difference is trivial against the quality lift on Pass 2 (reference-explanation generation).
+- `qwen3-32b` (Alibaba, 32B) — fully independent family but smaller than `gpt-oss-120b`; expected to drop more under multi-pass JSON stress. Held in reserve as a "swap to a different family" experiment if `gpt-oss-120b` results raise methodological questions.
+- `meta-llama/llama-4-scout-17b-16e-instruct` — same family as the LLaMA generator. Forbidden.
 
 ### 3.6 Frameworks/tools considered and **rejected**
 
@@ -170,12 +178,12 @@ This section records what we *thought* about and *didn't* pick, so the methodolo
 `.env` at repo root — **never committed** (in `.gitignore`):
 
 ```
-GROQ_API_KEY=...        # Phase 4 onward — answerer
-OPENAI_API_KEY=...      # Phase 3 — golden-set constructor (GPT-4o)
+GROQ_API_KEY=...        # Phase 3 + Phase 4 — answerer (LLaMA) + constructor (gpt-oss-120b)
 ANTHROPIC_API_KEY=...   # Phase 4 onward — RAGAS judge (Claude Sonnet)
+OPENAI_API_KEY=...      # OPTIONAL — only if the gpt-oss-120b pilot fails and you fall back to GPT-4o-mini
 ```
 
-All three needed before running experiments. Demo UI (Phase 10) in cached mode needs **none** of them.
+`GROQ_API_KEY` and `ANTHROPIC_API_KEY` are needed before experiments. `OPENAI_API_KEY` is now optional under the recalibrated plan (2026-05-04). Demo UI (Phase 10) in cached mode needs **none** of them.
 
 ---
 
