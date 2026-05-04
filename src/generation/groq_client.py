@@ -16,10 +16,17 @@ from groq import Groq
 
 from src.utils.cache import DEFAULT_CACHE_DIR, cache_get, cache_put
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = "llama-3.3-70b-versatile"          # answerer (Phase 4 experiments)
+CONSTRUCTOR_MODEL = "openai/gpt-oss-120b"          # golden-set constructor (Phase 3, Notebook 04)
 DEFAULT_TEMPERATURE = 0.0
 DEFAULT_MAX_TOKENS = 256
 PROVIDER = "groq"
+
+# Note: gpt-oss-120b is a reasoning model. Strict JSON mode
+# (response_format={"type": "json_object"}) fails because Groq's validator
+# rejects the model's internal reasoning preamble. Use instructed JSON instead:
+# tell the model "output ONLY a JSON object, no preamble" and parse with the
+# reasoning-leak-tolerant helper in src/generation/golden_prompts.py.
 
 
 _client_singleton: Groq | None = None
@@ -81,3 +88,49 @@ def groq_complete(
         cache_put(PROVIDER, model, temperature, prompt, payload, cache_dir=cache_dir)
 
     return text, latency, False
+
+
+def groq_complete_full(
+    prompt: str,
+    model: str = DEFAULT_MODEL,
+    temperature: float = DEFAULT_TEMPERATURE,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    use_cache: bool = True,
+) -> tuple[dict, bool]:
+    """Like `groq_complete` but returns the full cached payload dict (text +
+    latency + model + temperature + usage). For Notebook 04 cost tracking.
+
+    Returned dict shape:
+        {"text": str, "latency_s": float, "model": str, "temperature": float,
+         "usage": {"prompt_tokens": int, "completion_tokens": int, "total_tokens": int}}
+    """
+    if use_cache:
+        cached = cache_get(PROVIDER, model, temperature, prompt, cache_dir=cache_dir)
+        if cached is not None:
+            return cached, True
+
+    t0 = time.time()
+    resp = _client().chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    latency = time.time() - t0
+    text = resp.choices[0].message.content or ""
+
+    payload: dict[str, Any] = {
+        "text": text,
+        "latency_s": latency,
+        "model": model,
+        "temperature": temperature,
+        "usage": {
+            "prompt_tokens": getattr(resp.usage, "prompt_tokens", None),
+            "completion_tokens": getattr(resp.usage, "completion_tokens", None),
+            "total_tokens": getattr(resp.usage, "total_tokens", None),
+        },
+    }
+    if use_cache:
+        cache_put(PROVIDER, model, temperature, prompt, payload, cache_dir=cache_dir)
+    return payload, False
