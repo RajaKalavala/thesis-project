@@ -69,23 +69,23 @@
 
 Build in this dependency order. Add a 3-question unit test against `chunks.parquet` for each module.
 
-- [ ] `src/data/loaders.py` — load parquet + golden JSONL
+- [x] `src/data/loaders.py` — `load_medqa_4opt`, `load_golden`, `load_chunks`; parses `options_json`, assigns stable `medqa_NNNNN` ids (2026-05-05 — built alongside §5 EXP_01 prep)
 - [x] `src/data/chunker.py` — recursive 400/80 chunker (called by Notebook 01) (2026-05-03 — built alongside §2.1)
 - [x] `src/data/embedder.py` — BGE-large wrapper (`load_bge`, `embed_passages`, `embed_queries` with prefix, MPS auto-detect) (2026-05-04 — built alongside §2.2)
 - [x] `src/data/indices.py` — `build_chroma`/`load_chroma` + `build_bm25`/`load_bm25` + `bm25_top_k` (2026-05-04 — built alongside §2.2; loader role from todo plus the build role for the one-time §2.2 run)
-- [ ] `src/retrieval/base.py` — `Retriever` ABC: `retrieve(q: str, k: int) -> list[Chunk]`
-- [ ] `src/retrieval/none.py` — returns `[]` (for EXP_01)
+- [x] `src/retrieval/base.py` — `Retriever` ABC + `Chunk` dataclass (2026-05-05 — built alongside §5 EXP_01 prep)
+- [x] `src/retrieval/none.py` — returns `[]` (for EXP_01) (2026-05-05 — built alongside §5 EXP_01 prep)
 - [ ] `src/retrieval/naive.py` — ChromaDB top-k with BGE query prefix (Notebook 03 inlined this; refactor into `src/retrieval/` before EXP_02)
 - [ ] `src/retrieval/sparse.py` — BM25 top-k
-- [ ] `src/retrieval/hybrid.py` — RRF fusion (k=60)
+- [ ] `src/retrieval/hybrid.py` — RRF fusion (k=60) — module exists but predates the `Retriever` ABC; refactor under it before EXP_04
 - [ ] `src/retrieval/multi_hop.py` — decompose → 1–3 hops → accumulate
 - [x] `src/generation/groq_client.py` — Groq wrapper with disk cache (key = sha256 of `provider + model + temp + prompt`); returns `(text, latency_s, was_cached)` (2026-05-04 — built alongside §2.3, exercised in 3 real Groq calls)
 - [x] `src/generation/prompts.py` — `build_evidence_grounded_prompt` + `build_no_rag_prompt` + permissive `parse_letter` (2026-05-04 — built alongside §2.3; multi-hop variant deferred until EXP_05)
-- [ ] `src/eval/non_llm_metrics.py` — Exact Match, Retrieval Recall@K, MRR, nDCG@K, latency
+- [x] `src/eval/non_llm_metrics.py` — `exact_match`, `accuracy`, `recall_at_k`, `mrr`, `ndcg_at_k` (2026-05-05 — answer-side used in EXP_01; retrieval-side ready for EXP_02)
 - [ ] `src/eval/ragas_eval.py` — wrap RAGAS with **Claude 3.5 Sonnet** as judge (Anthropic key)
-- [ ] `src/eval/runner.py` — `run_experiment(retriever, dataset, output_dir)` writes `predictions.jsonl`, `retrieval.jsonl`, `summary.json`
+- [x] `src/eval/runner.py` — `run_experiment(retriever, dataset, output_dir, experiment_id, dataset_label)` writes `predictions.jsonl`, `retrieval.jsonl`, `summary.json`. Resumable: skips `question_id`s already in `predictions.jsonl`. (2026-05-05 — built alongside §5 EXP_01 prep)
 - [x] `src/utils/cache.py` — disk cache for all LLM calls (Groq, OpenAI, Anthropic) — JSON files at `data/cache/<provider>/<key[:2]>/<key>.json` (2026-05-04 — built alongside §2.3, exercised by `groq_complete`)
-- **Deliverable:** every module has at least one passing 3-row test against real data
+- **Deliverable:** every module has at least one passing 3-row test against real data — `tests/test_exp01_modules.py` passes 5 / 5 (loaders + NoRetrieval + non_llm_metrics + runner end-to-end with resume + golden-row shape) (2026-05-05)
 
 ---
 
@@ -115,11 +115,12 @@ For each experiment: write `notebooks/04*_exp0*_*.ipynb`, run on full **12,723**
 
 ### EXP_01 — No-RAG baseline
 
-- [ ] Notebook `04a_exp01_base_llm.ipynb`
-- [ ] Run on full 12,723 — direct LLM answer, no retrieval
-- [ ] Outputs to `results/exp_01_base_llm/`
-- [ ] Metrics: Exact Match Accuracy, Answer Correctness, Hallucination Rate (Faithfulness < 0.5)
+- [x] Notebook `04a_exp01_base_llm.ipynb` — three gated stages: smoke 50 → golden 234 → full 12,723. `RUN_FULL = False` by default. (2026-05-05 — built; user runs manually)
+- [ ] Run Stage A (smoke 50) → Stage B (golden 234) → Stage C (full 12,723) — user-driven
+- [ ] Outputs to `results/exp_01_base_llm__{smoke_50,golden_234,full_12723}/` (one dir per surface)
+- [ ] Metrics: Exact Match Accuracy filled by EXP_01 itself; Answer Correctness + Hallucination Rate (Faithfulness < 0.5) require `src/eval/ragas_eval.py` (next session — wraps RAGAS with Claude 3.5 Sonnet judge against `golden_234/predictions.jsonl`)
 - **Tables touched:** Table 1 (row 1), Table 7 (row 1), Table 9 (col 1)
+- **Schema lock:** `summary.json` shape pinned in [docs/results_schema.md](results_schema.md) (2026-05-05); RAGAS keys ship as `null` until the judge runs.
 
 ### EXP_02 — Naive RAG (dense ChromaDB top-k)
 
@@ -348,6 +349,7 @@ When all 16 experiments are done:
 | 2026-05-04 | **`hallucination_check_points` validator relaxed from `>= 3` to `>= 1`** | src/generation/golden_prompts.py `validate_pass2` | Pilot-run diagnosis showed all 12 Pass-2 schema failures had exactly 2 check_points (perfectly reasonable atomic claims; the model was right, the validator was wrong). The original prompt did not specify a minimum count. Lesson recorded in 04_golden_main_output.md §3.3: validators should mirror the prompt's literal contract, not impose extra structure. Recovers ~12 rows for ~$0.06 added Pass-3 cost. |
 | 2026-05-04 | **Phase 3 pilot success (50-row run, gpt-4o + new prompts)** | docs/output_notes/04_golden_main_output.md | 4 of 5 quality gates passing. Salvageable rate 74 %, multi-hop 8 %, JSON malformation 0 %, sufficiency 94 %. Only failing gate is accept rate (54 %) — root cause was the now-relaxed `check_points >= 3` validator. **Production run unblocked**: change `STAGE = "production"` in notebook §1, Restart Kernel & Run All; cache covers first 50, only 250 net new at ~$5.40 added cost. |
 | 2026-05-04 | **Phase 3 PRODUCTION COMPLETE — 234/300 accepted** | docs/output_notes/04_golden_main_output.md §5; data/processed/golden_ragas_300.jsonl | Production run on 300 questions: **234 accepted, 53 needs_review, 13 dropped, salvageable 95.7 %.** Cost **$6.61** measured (matches the original locked plan). 4/5 gates pass — accept rate 78 % is 2 pp below the 80 % gate but the actual deliverable target (≥ 220 accepted) is exceeded. Multi-hop rate held at 6 % at scale; JSON malformation 0.11 %. Wall time ~80 min. **Constructor swap from gpt-4o → gpt-oss-120b is now formally REVERTED** across plan.md / tech_stack.md / architecture.md / dataset.md / beginners_guide.md / thesis_understanding.md / README.md / memory; gpt-oss-120b A/B preserved as historical record in `notebooks/04_golden_dataset_gptoss.ipynb` and `docs/output_notes/04_notebook_output.md`. |
+| 2026-05-05 | **Phase 4 EXP_01 implementation COMPLETE — runner skeleton + No-RAG retriever + notebook ready** | src/data/loaders.py · src/retrieval/{base,none}.py · src/eval/{non_llm_metrics,runner}.py · tests/test_exp01_modules.py · docs/results_schema.md · notebooks/04a_exp01_base_llm.ipynb | Built only what EXP_01 needs to run: 5 new src modules + 1 notebook + 1 test file + 1 schema-lock doc. **Schema lock**: `summary.json` keys mirror Excel `Results Table` headers verbatim (`Acuuracy` typo preserved; RAGAS keys ship as `null` until judge lands) so EXP_02–EXP_05 paste into the workbook without rework. **Resumability** built into `runner.run_experiment` — skips `question_id`s already in `predictions.jsonl`, so a 5-h Groq run that dies mid-stream restarts free of charge. **Question_id is dataset-local**: `medqa_NNNNN` for the full surface (row index in `medqa_4opt.parquet`), `golden_NNN` for the golden 234 (the stratified-sample index 0..299 from Phase 3 — NOT the medqa_4opt row index; the two surfaces join by `question` text per dataset.md §2.2). All 5 real-data tests pass; 3-question runner smoke shows mean latency 1.31 s and resume making 0 net Groq calls. **User runs the experiment manually**; this entry covers the implementation step only. **Deferred to next session**: `src/eval/ragas_eval.py` (Claude 3.5 Sonnet judge, fills the four `RAGAS_*` columns + `Answer_Correctness` for EXP_01's `golden_234` predictions). EXP_02→EXP_05 just swap the retriever and reuse this scaffolding. |
 
 ---
 

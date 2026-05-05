@@ -14,7 +14,11 @@ import os
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CACHE_DIR = Path(os.environ.get("THESIS_CACHE_DIR", "data/cache"))
+# Anchor the cache directory to the repo root rather than the caller's cwd.
+# Without this, a Jupyter kernel running with cwd = notebooks/ silently writes
+# the cache to `notebooks/data/cache/...` and breaks resumability.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CACHE_DIR = Path(os.environ.get("THESIS_CACHE_DIR", str(_REPO_ROOT / "data" / "cache")))
 
 
 def _key(provider: str, model: str, temperature: float, prompt: str) -> str:

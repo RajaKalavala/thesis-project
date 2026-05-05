@@ -9,7 +9,10 @@
       "Bash(touch /Users/rajak/Workstation/Projects/myGitHub/thesis-project/src/__init__.py /Users/rajak/Workstation/Projects/myGitHub/thesis-project/src/data/__init__.py)",
       "Bash(.venv/bin/python -c ' *)",
       "Bash(grep -n \"[$][0-9]\" docs/todo.md)",
-      "Bash(/Users/rajak/Workstation/Projects/myGitHub/thesis-project/.venv/bin/python)"
+      "Bash(/Users/rajak/Workstation/Projects/myGitHub/thesis-project/.venv/bin/python)",
+      "Bash(.venv/bin/python tests/test_exp01_modules.py)",
+      "Bash(/Users/rajak/Workstation/Projects/myGitHub/thesis-project/.venv/bin/python -c ' *)",
+      "Bash(find src *)"
     ]
   }
 }
