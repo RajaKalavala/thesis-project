@@ -28,6 +28,8 @@ from src.eval.ragas_eval import (
     _load_golden_by_qid,
     _load_predictions,
     _load_retrieval,
+    _merge_partial_scores,
+    _nan_question_ids,
     applicable_metrics,
     build_ragas_rows,
 )
@@ -199,6 +201,102 @@ def test_build_rows_with_synthetic_chunks() -> None:
         assert set(applicable_metrics(rows)) == set(ALL_METRIC_NAMES)
 
 
+def test_nan_question_ids_finds_all_nan_rows() -> None:
+    """`_nan_question_ids` returns the set of question_ids whose row has NaN
+    in any active-metric column."""
+    import pandas as pd
+
+    existing = pd.DataFrame(
+        {
+            "question_id": ["golden_000", "golden_001", "golden_002", "golden_003"],
+            "answer_relevancy": [0.6, float("nan"), 0.8, 0.5],
+            "answer_correctness": [0.9, 0.95, float("nan"), float("nan")],
+        }
+    )
+    metric_names = ["answer_relevancy", "answer_correctness"]
+    nan_qids = _nan_question_ids(existing, metric_names)
+    # Row 0: both clean → NOT included
+    # Row 1: AR is NaN → included
+    # Row 2: AC is NaN → included
+    # Row 3: AC is NaN → included
+    assert nan_qids == {"golden_001", "golden_002", "golden_003"}, nan_qids
+
+
+def test_nan_question_ids_handles_missing_metric_column() -> None:
+    """If `existing` is missing a metric column entirely, it's not used in
+    the NaN check (treated as 'we never asked for that one')."""
+    import pandas as pd
+
+    existing = pd.DataFrame(
+        {
+            "question_id": ["golden_000", "golden_001"],
+            "answer_relevancy": [0.6, float("nan")],
+            # answer_correctness column absent
+        }
+    )
+    nan_qids = _nan_question_ids(existing, ["answer_relevancy", "answer_correctness"])
+    assert nan_qids == {"golden_001"}
+
+
+def test_merge_partial_replaces_nans_only() -> None:
+    """`_merge_partial_scores` replaces NaN cells with new values; preserves
+    already-good cells; ignores partial rows that don't match any existing
+    question_id."""
+    import pandas as pd
+
+    existing = pd.DataFrame(
+        {
+            "question_id": ["golden_000", "golden_001", "golden_002"],
+            "answer_relevancy": [0.6, float("nan"), 0.8],
+            "answer_correctness": [0.9, float("nan"), float("nan")],
+        }
+    )
+    partial = pd.DataFrame(
+        {
+            "question_id": ["golden_001", "golden_002", "golden_999"],
+            "answer_relevancy": [0.7, 0.85, 0.5],          # 002 was already 0.8 → preserved
+            "answer_correctness": [0.88, 0.92, 0.4],       # 999 doesn't exist → ignored
+        }
+    )
+    merged = _merge_partial_scores(existing, partial, ["answer_relevancy", "answer_correctness"])
+
+    # Row 0 untouched
+    assert merged.loc[0, "answer_relevancy"] == 0.6
+    assert merged.loc[0, "answer_correctness"] == 0.9
+    # Row 1: both filled from partial
+    assert merged.loc[1, "answer_relevancy"] == 0.7
+    assert merged.loc[1, "answer_correctness"] == 0.88
+    # Row 2: AR was already 0.8 (NOT overwritten) — AC was NaN, now 0.92
+    assert merged.loc[2, "answer_relevancy"] == 0.8
+    assert merged.loc[2, "answer_correctness"] == 0.92
+    # Phantom golden_999 didn't add a new row
+    assert len(merged) == 3
+
+
+def test_merge_partial_preserves_bookkeeping_columns() -> None:
+    """Bookkeeping columns (_pred_letter, _is_correct, etc.) survive the merge."""
+    import pandas as pd
+
+    existing = pd.DataFrame(
+        {
+            "question_id": ["golden_000", "golden_001"],
+            "answer_relevancy": [float("nan"), 0.7],
+            "_pred_letter": ["B", "C"],
+            "_is_correct": [True, False],
+        }
+    )
+    partial = pd.DataFrame(
+        {
+            "question_id": ["golden_000"],
+            "answer_relevancy": [0.55],
+        }
+    )
+    merged = _merge_partial_scores(existing, partial, ["answer_relevancy"])
+    assert merged.loc[0, "_pred_letter"] == "B"
+    assert bool(merged.loc[0, "_is_correct"]) is True
+    assert merged.loc[0, "answer_relevancy"] == 0.55
+
+
 if __name__ == "__main__":
     test_id_parser()
     print("✓ test_id_parser")
@@ -212,4 +310,12 @@ if __name__ == "__main__":
     print("✓ test_applicable_metrics_with_context")
     test_build_rows_with_synthetic_chunks()
     print("✓ test_build_rows_with_synthetic_chunks")
-    print("\nAll 6 RAGAS structure tests passed.")
+    test_nan_question_ids_finds_all_nan_rows()
+    print("✓ test_nan_question_ids_finds_all_nan_rows")
+    test_nan_question_ids_handles_missing_metric_column()
+    print("✓ test_nan_question_ids_handles_missing_metric_column")
+    test_merge_partial_replaces_nans_only()
+    print("✓ test_merge_partial_replaces_nans_only")
+    test_merge_partial_preserves_bookkeeping_columns()
+    print("✓ test_merge_partial_preserves_bookkeeping_columns")
+    print("\nAll 10 RAGAS structure tests passed.")

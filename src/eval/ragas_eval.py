@@ -44,6 +44,17 @@ JUDGE_TEMPERATURE = 0.0
 JUDGE_MAX_TOKENS = 1024
 EMBED_MODEL_NAME = "BAAI/bge-large-en-v1.5"
 
+# RunConfig — passed to RAGAS `evaluate()`. Tightened from defaults
+# (`max_workers=16`) after EXP_01's 2026-05-06 run produced ~40 % NaN scores
+# on Anthropic-side rate-limit throttles. Lowering concurrency to 4 keeps the
+# request rate under Anthropic's per-minute cap; bumping `max_wait` to 120 s
+# gives sustained-throttle waits more headroom; default `max_retries=10` and
+# `timeout=180` are unchanged.
+RAGAS_MAX_WORKERS = 4
+RAGAS_MAX_WAIT = 120
+RAGAS_MAX_RETRIES = 10
+RAGAS_TIMEOUT = 180
+
 # Metric set — names map to the RAGAS legacy lowercase singletons. RAGAS 0.4
 # has two parallel metric hierarchies: `ragas.metrics.collections.*`
 # (capitalized; the modern InstructorLLM path) and the legacy lowercase
@@ -244,6 +255,7 @@ def score_predictions(
     judge_model: str = JUDGE_MODEL,
     embed_model: str = EMBED_MODEL_NAME,
     overwrite: bool = False,
+    rescore_nans: bool = False,
 ) -> dict:
     """Run RAGAS on `<predictions_dir>/predictions.jsonl` and update
     `summary.json` with the aggregate scores.
@@ -257,12 +269,30 @@ def score_predictions(
           `RAGAS_Context_Recall`, `Answer_Correctness`, plus the
           `ragas_*` provenance keys.
 
+    Three modes — pick one:
+
+    - **Fresh run** (`overwrite=False`, `rescore_nans=False`, no CSV exists):
+      score every joined row.
+    - **Cache hit** (`overwrite=False`, `rescore_nans=False`, CSV exists):
+      skip the judge, refresh `summary.json` from the existing CSV.
+    - **Full re-run** (`overwrite=True`): re-score every row, replacing the
+      existing CSV.
+    - **NaN-only rescore** (`rescore_nans=True`): identify rows where any
+      applicable metric is NaN in the existing CSV, re-score *only those rows*,
+      merge the new scores back in (replace NaN cells, preserve good ones).
+      Cheap recovery path for the rate-limit-induced NaN issue documented in
+      `docs/output_notes/04a_exp01_output.md` §4.3.
+
     Parameters:
         n_smoke: if set, score only the first `n_smoke` rows (use for the
             ~10-row Stage A pilot before scaling).
-        overwrite: if False (default) and `ragas_scores.csv` exists, skip the
-            judge entirely and just refresh `summary.json` from the cached CSV.
+        overwrite: full re-run, ignoring any existing `ragas_scores.csv`.
+        rescore_nans: re-score only the NaN rows from an existing
+            `ragas_scores.csv`. Mutually exclusive with `overwrite`.
     """
+    if overwrite and rescore_nans:
+        raise ValueError("`overwrite` and `rescore_nans` are mutually exclusive — pick one.")
+
     predictions_dir = Path(predictions_dir)
     pred_path = predictions_dir / "predictions.jsonl"
     ret_path = predictions_dir / "retrieval.jsonl"
@@ -290,17 +320,78 @@ def score_predictions(
     metric_names = applicable_metrics(rows)
     print(f"[ragas] joined {len(rows)} rows | metrics = {metric_names}")
 
-    # Resumability — file-level skip
-    if scores_path.exists() and not overwrite:
+    if rescore_nans:
+        # NaN-only path — re-score just the rows whose existing scores are NaN
+        if not scores_path.exists():
+            raise RuntimeError(
+                f"`rescore_nans=True` but {scores_path.name} doesn't exist — "
+                f"there's nothing to rescore. Run with `rescore_nans=False` first."
+            )
+        existing = pd.read_csv(scores_path)
+        nan_qids = _nan_question_ids(existing, metric_names)
+        if not nan_qids:
+            print("[ragas] no NaN rows to rescore — already complete")
+            result_df = existing
+        else:
+            partial = rows[rows["question_id"].isin(nan_qids)].reset_index(drop=True)
+            print(f"[ragas] rescoring {len(partial)} NaN rows ({len(nan_qids)} unique question_ids)")
+            partial_result = _run_judge(partial, metric_names, judge_model, embed_model)
+            result_df = _merge_partial_scores(existing, partial_result, metric_names)
+            result_df.to_csv(scores_path, index=False)
+            print(f"[ragas] merged + wrote {scores_path}")
+    elif scores_path.exists() and not overwrite:
+        # Resumability — file-level skip
         print(f"[ragas] {scores_path.name} already exists → skipping judge, refreshing summary only")
         result_df = pd.read_csv(scores_path)
     else:
+        # Fresh run / full overwrite
         result_df = _run_judge(rows, metric_names, judge_model, embed_model)
         result_df.to_csv(scores_path, index=False)
         print(f"[ragas] wrote {scores_path}")
 
     summary = _refresh_summary(summary_path, result_df, metric_names, judge_model)
     return summary
+
+
+def _nan_question_ids(existing: pd.DataFrame, metric_names: list[str]) -> set[str]:
+    """Return the set of question_ids in `existing` whose row has NaN in any
+    of the active metric columns."""
+    cols = [m for m in metric_names if m in existing.columns]
+    if not cols:
+        return set()
+    nan_mask = existing[cols].apply(pd.to_numeric, errors="coerce").isna().any(axis=1)
+    return set(existing.loc[nan_mask, "question_id"].astype(str))
+
+
+def _merge_partial_scores(
+    existing: pd.DataFrame,
+    partial: pd.DataFrame,
+    metric_names: list[str],
+) -> pd.DataFrame:
+    """Update `existing` in place: for each row in `partial`, replace NaN
+    cells in the matching `existing` row with the new score. Cells that
+    already had a non-NaN score in `existing` are preserved (we don't
+    overwrite a previously-good score with a re-judged one).
+
+    Match key is `question_id`. Returns the merged DataFrame.
+    """
+    out = existing.copy()
+    cols = [m for m in metric_names if m in partial.columns and m in out.columns]
+    out_idx = {str(qid): i for i, qid in enumerate(out["question_id"])}
+    n_updated = 0
+    for _, prow in partial.iterrows():
+        qid = str(prow["question_id"])
+        if qid not in out_idx:
+            continue
+        i = out_idx[qid]
+        for col in cols:
+            old = pd.to_numeric(out.at[i, col], errors="coerce")
+            new = pd.to_numeric(prow[col], errors="coerce")
+            if pd.isna(old) and pd.notna(new):
+                out.at[i, col] = new
+                n_updated += 1
+    print(f"[ragas] merge: updated {n_updated} cells across {len(cols)} metric columns")
+    return out
 
 
 def _run_judge(
@@ -312,6 +403,7 @@ def _run_judge(
     """The expensive bit — calls Claude. Caller wraps with file-level cache."""
     from ragas import evaluate
     from ragas.dataset_schema import EvaluationDataset, SingleTurnSample
+    from ragas.run_config import RunConfig
 
     llm, embeddings = build_judge_and_embeddings(judge_model, embed_model)
     # Legacy lowercase singletons — `evaluate()` injects llm + embeddings into them.
@@ -328,12 +420,25 @@ def _run_judge(
     ]
     dataset = EvaluationDataset(samples=samples)
 
+    # Conservative throughput config — see module-level RAGAS_* constants for rationale.
+    run_config = RunConfig(
+        timeout=RAGAS_TIMEOUT,
+        max_retries=RAGAS_MAX_RETRIES,
+        max_wait=RAGAS_MAX_WAIT,
+        max_workers=RAGAS_MAX_WORKERS,
+    )
+    print(
+        f"[ragas] RunConfig: max_workers={RAGAS_MAX_WORKERS}, "
+        f"max_retries={RAGAS_MAX_RETRIES}, max_wait={RAGAS_MAX_WAIT}s, timeout={RAGAS_TIMEOUT}s"
+    )
+
     t0 = time.time()
     result = evaluate(
         dataset=dataset,
         metrics=metrics,
         llm=llm,
         embeddings=embeddings,
+        run_config=run_config,
         raise_exceptions=False,
     )
     wall_s = time.time() - t0

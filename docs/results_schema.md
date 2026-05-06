@@ -43,9 +43,9 @@ The runner (`src/eval/runner.py::run_experiment`) writes all three. Each line in
 | `RAGAS_Context_Recall` | float ∈ [0, 1] \| null | RAGAS judge (golden-only) — **null for EXP_01 No-RAG** (see §2.3) | Table 1 |
 | `Answer_Correctness` | float ∈ [0, 1] \| null | RAGAS judge — context-independent, runs for every architecture | Table 1 |
 | `ragas_metrics_run` | list[str] \| absent | which metrics were actually scored (e.g. `["answer_relevancy", "answer_correctness"]` for EXP_01) | provenance |
-| `ragas_n_scored` | int \| absent | number of golden rows that received scores | provenance |
+| `ragas_n_scored` | int \| absent | number of golden rows attempted (rows in `ragas_scores.csv`; not all of them necessarily have non-NaN values for every metric — see §3.1) | provenance |
 | `ragas_judge` | str \| absent | judge model id (e.g. `"claude-sonnet-4-6"`) | provenance |
-| `ragas_timestamp_utc` | str (ISO-8601) \| absent | when judging finished | provenance |
+| `ragas_timestamp_utc` | str (ISO-8601) \| absent | when the most recent judge pass finished | provenance |
 | `mean_latency_s` | float | mean of per-row `latency_s` across the **whole `predictions.jsonl`** (including resumed sessions) | Table 1 *Latency* |
 | `wall_time_s_this_run` | float | wall time for the *current* invocation; resumed sessions reset this | — |
 | `n_calls_this_run` | int | API calls this invocation made (excludes resume-skipped rows) | — |
@@ -127,7 +127,38 @@ For EXP_02–EXP_05, lists carry up to `k` (default 5) chunk IDs ranked best-fir
 
 ---
 
-## 5. Versioning policy
+## 5. `ragas_scores.csv` — RAGAS judge output
+
+Per-row scores from `src/eval/ragas_eval.py`. One row per scored prediction; columns are the active metric names (e.g. `answer_relevancy`, `answer_correctness` for EXP_01; all five for EXP_02–EXP_05) plus bookkeeping (`question_id`, `_pred_letter`, `_gold_letter`, `_is_correct`, `_has_context`).
+
+### 5.1 NaN handling — the resilient-judge contract
+
+A NaN cell means *the judge did not produce a valid score for this row × this metric*. Causes are almost always operational, not content:
+
+- Anthropic API rate-limit throttle (most common at sustained throughput)
+- Transient network error
+- Judge response failed JSON parsing (rare with Sonnet 4.6)
+
+The runner uses `evaluate(..., raise_exceptions=False)` so a NaN cell never crashes the whole batch. It also uses `RunConfig(max_workers=4, max_retries=10, max_wait=120)` to keep the on-first-pass NaN rate low.
+
+**Recovery path**: `score_predictions(..., rescore_nans=True)` re-runs only the rows whose existing CSV entry has any NaN in the active-metric columns. New scores are merged in via `_merge_partial_scores` — already-good cells are *preserved*, NaN cells are *replaced*. This is cheap (only the missing rows pay) and idempotent (re-running with no NaN left does nothing).
+
+The aggregate `summary.json` numbers (`RAGAS_Faithfulness`, `Answer_Correctness`, etc.) are computed by `_refresh_summary` over the **non-NaN values**, so partial coverage doesn't poison the mean. The same function ships `ragas_n_scored` = total rows in the CSV, but the per-metric mean is over a strictly-smaller subset for any metric with NaNs.
+
+### 5.2 Idempotency contract
+
+| Mode | Trigger | Behaviour |
+|---|---|---|
+| Fresh run | no `ragas_scores.csv`, `overwrite=False`, `rescore_nans=False` | judge every row, write CSV |
+| Cache hit | CSV exists, `overwrite=False`, `rescore_nans=False` | skip judge entirely, refresh `summary.json` from CSV |
+| Full rerun | `overwrite=True` | re-judge every row, replace CSV |
+| NaN rescore | `rescore_nans=True` | re-judge only NaN rows, merge into existing CSV |
+
+`overwrite=True` and `rescore_nans=True` are mutually exclusive (the runner raises `ValueError` if both set).
+
+---
+
+## 6. Versioning policy
 
 | Change to schema | Action |
 |---|---|
