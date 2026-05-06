@@ -78,7 +78,7 @@ The three-family separation is **load-bearing** for the methodology defence: eve
 |---|---|
 | **RAGAS** | Faithfulness, Context Precision, Context Recall, Answer Relevancy, Answer Correctness — runs only on the 300-row golden subset |
 | **scikit-learn** | Exact-match accuracy, F1, ROUGE wrappers, the small classifier for hallucination-taxonomy labelling (Phase 8) |
-| **Custom non-LLM metrics** (`src/eval/non_llm_metrics.py`) | Retrieval Recall@K, MRR, nDCG@K, latency — these run on the full 12,723 |
+| **Custom non-LLM metrics** (`src/eval/non_llm_metrics.py`) | Retrieval Recall@K, MRR, nDCG@K, latency — these run on the **test split (1,273)** per [`plan.md` §0 #8](../plan.md) |
 
 ### 2.6 Explainability
 
@@ -238,7 +238,7 @@ This is fully covered in [`architecture.md` §8](architecture.md#8-hardware-spli
 
 - **M1 Pro 16 GB does 100% of this thesis.** No GPU rental, no Colab dependency.
 - The only heavy local task is **embedding** — measured **~6 h on Apple MPS** for 67,599 chunks (recalibrated 2026-05-04 from the original `~12 min MPS / ~25 min CPU` estimate; sustained-load thermal throttling + partial-MPS coverage on BGE-large). Cost is paid exactly once because the cell is resumable from `embeddings.npy`.
-- All long-running experiments (12,723-question Groq runs) execute on the M1 Pro overnight as backgrounded scripts. Use `caffeinate -dimsu &` to disable sleep.
+- Phase 4 experiments evaluate on the **test split (1,273 questions)** per [`plan.md` §0 #8](../plan.md), so per-architecture wall time is ~10 min (not the ~6 h originally projected for full 12,723). EXP_05 Multi-Hop is the longest at ~30 min due to 3× per-question call volume. Long Groq runs no longer need overnight scheduling — they fit in a coffee break.
 - Memory peak ~10 GB during embedding; comfortable within 16 GB.
 
 ---

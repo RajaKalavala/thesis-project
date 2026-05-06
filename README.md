@@ -8,7 +8,7 @@
 
 ## What this is
 
-A controlled side-by-side comparison of **4 RAG architectures** (Naive · Sparse · Hybrid · Multi-Hop) on the **MedQA US** benchmark (12,723 USMLE-style clinical questions) with the same LLM, embedding model, and prompt template. Plus three novelty layers on top: adaptive routing by question complexity, multi-signal confidence-aware rejection, and a hallucination error-type taxonomy. **16 experiments → 12 + 1 results tables → thesis.**
+A controlled side-by-side comparison of **4 RAG architectures** (Naive · Sparse · Hybrid · Multi-Hop) on the **MedQA US** benchmark (12,723 USMLE-style clinical questions; evaluation runs on the **1,273-question `test` split** for contamination-clean comparison — see `plan.md` §0 #8) with the same LLM, embedding model, and prompt template. Plus three novelty layers on top: adaptive routing by question complexity, multi-signal confidence-aware rejection, and a hallucination error-type taxonomy. **16 experiments → 12 + 1 results tables → thesis.**
 
 Why it matters: nobody has done this comparison on a medical benchmark covering accuracy + hallucination + explainability *together*.
 

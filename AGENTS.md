@@ -27,7 +27,7 @@ These rules are load-bearing. Violating them costs the user real time or money.
 | Big task | Smoke test first | Saves if buggy |
 |---|---|---|
 | Build 300-row golden dataset (~$12, ~2 h) | Build 50-row pilot first (~$2, 30 min) | $10 + 1.5 h |
-| Run EXP_02 on 12,723 questions (~6 h) | Run EXP_02 on 5 questions first (~1 min) | 6 h |
+| Run EXP_02 on 1,273 test questions (~10 min) | Run EXP_02 on 5 questions first (~1 min) | 10 min |
 | Embed 36k chunks (~25 min on M1 Pro) | Embed 100 chunks first (~30 sec) | 25 min |
 | LIME/SHAP on 200 questions (~3 h) | Try on 5 questions first (~10 min) | 3 h |
 
@@ -39,7 +39,7 @@ The locked decisions are in [`plan.md` §0](plan.md). Specifically:
 - 400-token chunks with 80-token overlap.
 - 300-row golden subset (was 1,000; user reduced for budget).
 - LLaMA 3.3 70B answerer · GPT-4o constructor · Claude Sonnet 4.6 judge.
-- 12,723 full MedQA US evaluation surface.
+- 1,273-question MedQA US `test` split as the locked evaluation surface (narrowed from "all 12,723" 2026-05-06 — see plan.md §0 #8 for the contamination-clean methodology rationale; the EXP_01 full-12,723 run is preserved as the contamination-evidence anchor).
 
 If you think a locked decision should change, **state your case clearly and ask the user** before editing files. Do not silently revise.
 

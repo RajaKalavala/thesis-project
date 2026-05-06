@@ -214,21 +214,25 @@ This is roughly aligned with the USMLE Step 1 + Step 2&3 question pool — suppo
 
 ---
 
-## 4. Two evaluation surfaces — raw 12,723 vs. golden subset
+## 4. Two evaluation surfaces — `test` split + golden subset
 
 The thesis uses both, for different purposes:
 
-| Property | Raw MedQA US (full) | Golden RAGAS subset (built in Notebook 04) |
+| Property | MedQA US `test` split (canonical) | Golden RAGAS subset (built in Notebook 04) |
 |---|---|---|
-| Source | `medqa-data/questions/US/` (4-option variant preferred) | `data/processed/golden_ragas_300.jsonl` (built in `plan.md` §5) |
-| Size | **12,723 questions** (train + dev + test combined) | **300 stratified rows** — staged 50-pilot + 250-production |
+| Source | `medqa-data/questions/US/test.jsonl` (4-option variant preferred — filter `medqa_4opt.parquet` to `split == "test"`) | `data/processed/golden_ragas_300.jsonl` (built in `plan.md` §5) |
+| Size | **1,273 questions** (locked 2026-05-06 — see [`plan.md` §0 #8](../plan.md)) | **300 stratified rows** — staged 50-pilot + 250-production (234 accepted) |
 | Built by | Original MedQA paper (Jin et al., 2020) | This thesis — Notebook 04, `gpt-4o`-via-OpenAI three-pass pipeline + automated audit (✅ produced 234 accepted of 300 attempted on 2026-05-04 at $6.61) |
 | Has reference *explanations* | No (only `answer` and `answer_idx`) | Yes (`reference_explanation`, `gold_context`, `hallucination_check_points`) |
 | Suitable for | **Exact-match accuracy**, **Retrieval Recall@K**, **latency** for all 16 experiments | **Full RAGAS suite** — Faithfulness, Context Precision, Context Recall, Answer Relevancy, Answer Correctness |
 | Stratification fields | `meta_info`, length-based long-vignette flag | `question_type` ∈ {diagnosis, treatment, mechanism, management, other}, `requires_multihop`, plus all raw-MedQA fields |
-| Long-vignette rate | 4.07% (representative) | ~20% (deliberately oversampled for Multi-Hop fairness, 60 forced rows) |
+| Long-vignette rate | 4.87 % (62 / 1,273 — representative) | ~20% (deliberately oversampled for Multi-Hop fairness, 60 forced rows) |
 
-**Why every experiment evaluates on the full 12,723** — exact-match accuracy and retrieval recall don't need reference explanations; they only need `answer_idx` and the retrieved-chunk IDs. So they scale to the full corpus. The 300-row golden subset is *only* needed for the RAGAS-suite metrics that demand a reference answer + reference context.
+**Why the test split, not the full 12,723** — EXP_01's full-12,723 run revealed a **10.6 pp accuracy gap between train+dev (0.880) and test (0.774)** — strong evidence of LLaMA pretraining contamination on the train+dev splits. The test split is the contamination-clean slice and matches MedRAG / MIRAGE's primary reporting surface, giving direct apples-to-apples comparison with published baselines. Statistical power is sound (n=1,273, 95 % CI ±2.4 pp at p≈0.85), wall time per architecture drops 10× (~6–10 min vs ~1–2 h on full corpus), and the methodology framing is cleaner not weaker — we report on the un-contaminated subset by design. EXP_01's full-12,723 run is preserved for the train-vs-test contamination breakdown that drove this lock.
+
+**Why the golden 234 is independent** — RAGAS metrics (Faithfulness, Context Precision/Recall, Answer Correctness) need reference answers + reference contexts that only the constructor-built golden subset provides. Golden's split mix (188 train / 28 dev / 18 test) is heavily train-skewed, so RAGAS scoring is inherently *not* contamination-clean — but RAGAS measures answer-vs-reference grounding, which is robust to whether the LLM memorised the answer (judge scored AC train=0.872 vs test=0.855 — only 1.7 pp gap, vs 10.6 pp on Exact Match). See [`docs/output_notes/04a_exp01_output.md` §4.4](output_notes/04a_exp01_output.md).
+
+**The full 12,723** stays in `medqa_4opt.parquet` as input data — Phase 3 golden construction sampled from it, and EXP_01's `full_12723` run is kept on disk as the empirical anchor of the contamination story. EXP_02–EXP_05 do **not** evaluate on the full corpus.
 
 ---
 

@@ -316,7 +316,7 @@ When you're about to launch a 6-hour Groq run:
    .venv/bin/python -m src.eval.runner --config exp_02_naive_bge > results/exp_02/run.log 2>&1 &
    ```
 5. **Tail the log periodically** to confirm it's still alive: `tail -f results/exp_02/run.log`
-6. **The cache is your safety net** — if the run dies at question 8,500 of 12,723, the next launch starts at 8,501
+6. **The cache is your safety net** — if the run dies at question 850 of 1,273, the next launch starts at 851 (test-split evaluation per [`plan.md` §0 #8](../plan.md))
 
 ---
 
@@ -335,7 +335,7 @@ When you're about to launch a 6-hour Groq run:
 | Phase 2 — BM25 index | ✅ Trivial | Pure Python, ~30 s. |
 | Phase 2 — Smoke test (Notebook 03) | ✅ Trivial | 3 questions, ~30 s. |
 | Phase 3 — **Golden RAGAS dataset** (Notebook 04) ✅ DONE 2026-05-04 | ✅ API-bound | All compute is OpenAI API calls (`gpt-4o` constructor — locked 2026-05-04 after A/B). M1 Pro just orchestrates. **Measured wall-time: ~80 min for 300 questions; cost $6.61.** Output: 234 accepted in `data/processed/golden_ragas_300.jsonl`. |
-| Phase 4 — **Group A (5 experiments × 12,723)** | ✅ API-bound (long) | All compute is Groq API. M1 Pro orchestrates + caches. ~30–40 h wall-clock total. Run as backgrounded Python scripts overnight. |
+| Phase 4 — **Group A (5 experiments × 1,273 test split)** | ✅ API-bound (short) | All compute is Groq API. M1 Pro orchestrates + caches. **~1 h wall-clock total** (recalibrated 2026-05-06 from ~30–40 h on full 12,723; locked evaluation surface narrowed to test split per [`plan.md` §0 #8](../plan.md) for contamination-clean comparison). Each architecture is a coffee-break run. |
 | Phase 4 — RAGAS judging | ✅ API-bound | Anthropic API. ~2 h wall-clock for all architectures × 300 golden × 5 metrics. |
 | Phase 5 — Adaptive RAG | ✅ API-bound | ~10 h Groq. |
 | Phase 6 — LIME / SHAP | ✅ Mostly API-bound | Local: small linear models, perturbation logic. Remote: Groq for re-prompting. ~6–10 h. |
@@ -418,7 +418,7 @@ If you find yourself swapping (Activity Monitor → Memory → Memory Pressure g
 | 1 | Build `src/data/` + `src/utils/cache.py` + `src/config.py`. Notebook 01 (chunking). | `chunks.parquet` | M1 Pro |
 | 2 | Build `src/data/indices.py`. Notebook 02 (dual embedding + ChromaDB + BM25). | `embeddings_*.npy`, `chroma_*/`, `bm25.pkl` | M1 Pro (or Colab for ~30 min embedding speedup) |
 | 3 | Build `src/retrieval/{base,naive,sparse,hybrid}.py` + `src/generation/groq_client.py` + `src/generation/prompts.py`. Notebook 03 (smoke test). | First end-to-end answers on 3 dev questions | M1 Pro |
-| 4 | Build `src/eval/{non_llm_metrics,runner}.py`. Run **EXP_01 No-RAG** on full 12,723 as the simplest experiment to flush bugs. | `results/exp_01_base_llm/summary.json` | M1 Pro overnight |
+| 4 | Build `src/eval/{non_llm_metrics,runner}.py`. Run **EXP_01 No-RAG** on test split 1,273 (per [`plan.md` §0 #8](../plan.md)) — simplest experiment to flush bugs. | `results/exp_01_base_llm__test_1273/summary.json` | M1 Pro, ~6 min |
 | 5 | Build `src/generation/openai_client.py` + Notebook 04 (golden RAGAS dataset, staged 50 → 300). | `golden_ragas_300.jsonl` | M1 Pro |
 
 By session 5 you have *every reusable piece* of the pipeline. Sessions 6+ are mostly running experiments and writing.

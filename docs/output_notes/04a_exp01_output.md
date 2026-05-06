@@ -11,13 +11,16 @@
 
 ## 1. Output
 
-Three result directories under `results/`, each with `predictions.jsonl`, `retrieval.jsonl` (empty lists — No-RAG by definition), and `summary.json`:
+Four result directories under `results/`, each with `predictions.jsonl`, `retrieval.jsonl` (empty lists — No-RAG by definition), and `summary.json`. **Canonical headline = `test_1273`** per the 2026-05-06 evaluation-surface lock ([plan.md §0 #8](../../plan.md#0-locked-decisions)); `full_12723` retained as the contamination-evidence anchor.
 
-| Surface | Rows | Accuracy (`Acuuracy`) | Mean latency | Wall time | Cache hits |
-|---|---:|---:|---:|---:|---:|
-| `exp_01_base_llm__smoke_50` | 50 | **0.9400** (47/50) | 0.27 s | 14 s | 0 / 50 |
-| `exp_01_base_llm__golden_234` | 234 | **0.9017** (211/234) | 0.25 s | 58 s | 3 / 234 |
-| `exp_01_base_llm__full_12723` | 12,723 | **0.8693** (11,060/12,723) | 0.28 s | 58 min | 286 / 12,723 |
+| Surface | Rows | Accuracy (`Acuuracy`) | Mean latency | Wall time | Notes |
+|---|---:|---:|---:|---:|---|
+| `exp_01_base_llm__smoke_50` | 50 | **0.9400** (47/50) | 0.27 s | 14 s | smoke validation only |
+| `exp_01_base_llm__golden_234` | 234 | **0.9017** (211/234) | 0.25 s | 58 s | RAGAS surface (golden train-skewed) |
+| **`exp_01_base_llm__test_1273`** | **1,273** | **0.7738** (985/1,273) | 0.30 s | derived (no new calls) | **CANONICAL — Table 1 row 1** |
+| `exp_01_base_llm__full_12723` | 12,723 | 0.8693 (11,060/12,723) | 0.28 s | 58 min | LEGACY — preserved for contamination evidence; see `README_LEGACY.md` |
+
+The `test_1273/` directory was derived 2026-05-06 by filtering `full_12723/predictions.jsonl` to `split == 'test'` rows — same predictions, recomputed aggregate. Zero new Groq calls.
 
 Runner integrity (every row in every surface):
 - `pred_letter` parsed cleanly — **0 nulls** across 13,007 calls
@@ -99,15 +102,19 @@ A small B-bias (~+4 % over expected) but no extreme letter-collapse failure mode
 
 1. **EXP_01 is COMPLETE.** All three surfaces written; runner schema-conformant; cache validated; contamination story empirically established.
 
-2. **Headline numbers for Excel Table 1 row 1:**
+2. **Headline numbers for Excel Table 1 row 1** (canonical = `test_1273` per [plan.md §0 #8](../../plan.md#0-locked-decisions)):
 
-   | Cell | Value |
-   |---|---|
-   | `Acuuracy` | 0.8693 |
-   | `Exact Match` | 0.8693 |
-   | `Generator Model` | `llama-3.3-70b-versatile` |
-   | `mean_latency_s` | 0.279 |
-   | `RAGAS_*` columns | pending RAGAS judge (next session) |
+   | Cell | Value | Source |
+   |---|---|---|
+   | `Acuuracy` | **0.7738** | `test_1273` (the contamination-clean baseline) |
+   | `Exact Match` | **0.7738** | same |
+   | `Generator Model` | `llama-3.3-70b-versatile` | locked |
+   | `mean_latency_s` | 0.296 | `test_1273` |
+   | `Answer_Correctness` | 0.8738 | `golden_234` RAGAS (n=137 non-NaN) |
+   | `RAGAS_Answer_Relevance` | 0.5977 | `golden_234` RAGAS (n=174 non-NaN) |
+   | `RAGAS_Faithfulness` etc. | `null` | Option A — undefined for No-RAG |
+
+   The 0.8693 number from the full-12,723 run is preserved as the *contaminated* baseline (kept in `full_12723/summary.json` with the `README_LEGACY.md` marker) for the train-vs-test breakdown that drove the 2026-05-06 surface narrowing.
 
 3. **The 87 % full-12,723 number is misleading without the 77 % test-split number alongside it.** Every subsequent architecture's results table should report both, and the methodology chapter should lead with the contamination disclosure. This converts a known-but-hidden risk into a documented limitation that strengthens the methodology rather than undermining it.
 

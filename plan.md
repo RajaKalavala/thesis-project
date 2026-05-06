@@ -19,7 +19,7 @@
 | 5 | Chunking | **Recursive 400-token chunks, 80-token overlap** (20%) | 20% overlap is the standard in 2024–25 medical-RAG papers; protects against boundary loss. ~67k chunks (recalibrated 2026-05-03; original "~36k" estimate was unreachable for a 12.85 M-word corpus with this config — see Phase 2 for math). |
 | 6 | Hybrid fusion | Reciprocal Rank Fusion, **k=60** | Proposal §7.6.3; standard. |
 | 7 | Multi-Hop budget | **3 hops max** | Proposal §7.6.4. |
-| 8 | Evaluation surface (full) | **All 12,723 MedQA US questions** | Train + dev + test combined — canonical benchmark scope per the corrected workbook. |
+| 8 | Evaluation surface | **MedQA US `test` split: 1,273 questions** | **Locked 2026-05-06**, narrowed from "all 12,723" (train+dev+test combined). EXP_01's full-12,723 run revealed a 10.6 pp accuracy gap between train+dev (0.880) and test (0.774) — strong evidence of LLaMA pretraining contamination on train+dev. The test split is the only contamination-clean slice of MedQA-US and matches MedRAG / MIRAGE's primary reporting surface, giving direct apples-to-apples comparison with published baselines. n=1,273 is statistically sound for headline accuracy (CI ±2.4 pp at p≈0.85), wall time is ~6 min per architecture (vs ~1–2 h on full 12,723), and the methodology framing is *cleaner* not weaker — we're reporting on the un-contaminated subset by design. The EXP_01 full-12,723 run is preserved for the train-vs-test contamination breakdown that drove this lock. RAGAS scoring still runs on the golden 234 (independent surface). |
 | 9 | Golden RAGAS reference subset | **Stratified 300 questions** built from scratch in two stages: 50-row smoke pilot → 250 more for production (= 300 total) | Drives Faithfulness, Context Recall, Context Precision, Answer Correctness on 300 rows; the remaining 12,423 still get exact-match accuracy and retrieval recall. Sized for cost-efficiency while preserving per-stratum analysis room (≥ 60 rows per `question_type` bucket). |
 | 10 | Golden-set **constructor** LLM | **`gpt-4o`** via OpenAI API — three-pass JSON pipeline with new prompts (structured `selected_chunks`, verbatim `best_gold_context`, `answer_match` boolean, multi-hop tightening) | **Locked 2026-05-04 after empirical A/B comparison** (see `docs/output_notes/04_notebook_output.md`): gpt-4o produced 78 % salvageable rows vs 64 % for `openai/gpt-oss-120b` on identical 50 questions, 0 loop errors vs 11, and 5/5 vs 3/5 faithfulness on the smoke question. Production run on 300 questions: **234 accepted, 53 needs_review, 13 dropped** at $6.61 total. Multi-hop tightening in Pass 2 dropped over-labelling from 66 % → 6 %. Cost is small in absolute terms ($6.61 for the whole golden set); the cost saving from gpt-oss-120b ($0.40 for 300) was not worth the calibration loss. |
 | 11 | RAGAS **judge** LLM | **`claude-sonnet-4-6`** (Anthropic) — different family from generator AND constructor | **Locked 2026-05-06**, upgraded from `claude-3-5-sonnet-20241022`. Same per-token pricing ($3/M input, $15/M output) but materially better structured-output adherence + sub-statement claim verification — exactly the workload RAGAS Faithfulness needs. Realistic cost ~$140–160 across 234 golden × applicable metrics × 5 architectures (recalibrated 2026-05-06; original $10–15 estimate was ~10× optimistic on per-row call counts). |
@@ -199,7 +199,7 @@ This phase builds the artefacts every later notebook *loads*. Build them once an
 | 3 | Print question, retrieved chunks, generated answer side by side. Verify: retrieval is on-topic, prompt format renders cleanly, LLM returns a valid letter. |
 | 4 | Time the round-trip per question. Confirm Groq quota / rate-limit headroom. |
 
-If anything is off here, fix it before Phase 3 — the same code path runs 12,723 × 4 times in Phase 4.
+If anything is off here, fix it before Phase 3 — the same code path runs 1,273 × 5 times in Phase 4 (test split × 5 architectures, per the locked evaluation surface §0 #8).
 
 ---
 
@@ -262,11 +262,11 @@ Build the `src/` modules in this dependency order before running any of EXP_01�
 
 | # | Notebook | Retriever module | Dataset slice | Time estimate |
 |---|---|---|---|---|
-| EXP_01 | `04a_exp01_base_llm.ipynb` | `none.py` | full 12,723 | ~6 h Groq |
-| EXP_02 | `04b_exp02_naive_rag.ipynb` | `naive.py` (k=5) | full 12,723 | ~6 h Groq |
-| EXP_03 | `04c_exp03_sparse_rag.ipynb` | `sparse.py` (k=5) | full 12,723 | ~5 h Groq |
-| EXP_04 | `04d_exp04_hybrid_rag.ipynb` | `hybrid.py` (k=5) | full 12,723 | ~6 h Groq |
-| EXP_05 | `04e_exp05_multi_hop_rag.ipynb` | `multi_hop.py` (≤3 hops, k=5/hop) | full 12,723 | ~12–18 h Groq (3× the calls) |
+| EXP_01 | `04a_exp01_base_llm.ipynb` | `none.py` | **test 1,273** (locked §0 #8) | ~6 min Groq |
+| EXP_02 | `04b_exp02_naive_rag.ipynb` | `naive.py` (k=5) | **test 1,273** | ~10 min Groq |
+| EXP_03 | `04c_exp03_sparse_rag.ipynb` | `sparse.py` (k=5) | **test 1,273** | ~10 min Groq |
+| EXP_04 | `04d_exp04_hybrid_rag.ipynb` | `hybrid.py` (k=5) | **test 1,273** | ~10 min Groq |
+| EXP_05 | `04e_exp05_multi_hop_rag.ipynb` | `multi_hop.py` (≤3 hops, k=5/hop) | **test 1,273** | ~30 min Groq (3× the calls per question) |
 
 **Single embedder for the whole thesis.** All five experiments use the same BGE-large ChromaDB collection. EXP_03 (Sparse / BM25) doesn't use the embedder; EXP_01 (No-RAG) doesn't retrieve. The methodology paragraph in the writeup will justify BGE-large based on its TREC-COVID nDCG@10 benchmark and identify a domain-fine-tuned-embedder ablation as future work.
 
@@ -300,7 +300,7 @@ Output: `complexity` ∈ {Simple, Moderate, Complex}, saved to `data/processed/c
 - Moderate → `hybrid.py`
 - Complex → `multi_hop.py`
 
-Run on full 12,723. Time estimate: weighted average of EXP_02 / EXP_04 / EXP_05.
+Run on **test 1,273** (per §0 #8). Time estimate: weighted average of EXP_02 / EXP_04 / EXP_05 ≈ 10–15 min Groq.
 
 **Tables filled:** Table 2, Table 3, Table 1 row 6, Table 10.
 
@@ -351,7 +351,7 @@ Weighted formula (Excel default — tune on a 200-row validation slice):
 confidence = 0.30·retrieval + 0.30·faithfulness + 0.20·relevancy + 0.20·agreement
 ```
 
-Sweep thresholds {0.5, 0.6, 0.7, 0.8, 0.9}. Pick the threshold that **minimises hallucination rate while keeping ≥ 70% accept rate** on the validation slice. Lock that threshold and run on full 12,723.
+Sweep thresholds {0.5, 0.6, 0.7, 0.8, 0.9}. Pick the threshold that **minimises hallucination rate while keeping ≥ 70% accept rate** on the validation slice. Lock that threshold and run on **test 1,273** (per §0 #8).
 
 When `confidence < threshold`, output: *"Evidence is insufficient for a reliable answer."*
 
@@ -500,7 +500,7 @@ If every experiment writes its `summary.json` with **exactly the column names fr
 | Phase 1 (EDA) ✓ | 5 min CPU | $0 |
 | Phase 2 (chunk + embed once + ChromaDB + BM25) | **~6 h MPS measured** (chunk ~1 min · embed ~355 min · Chroma 1m 39s · BM25 8 s — recalibrated 2026-05-04 from the original ~25 min estimate) | $0 |
 | Phase 3 (golden 300, staged 50 pilot + 250 production) — `gpt-4o` via OpenAI API | ~80 min measured | **$6.61** measured 2026-05-04 (matches the original locked plan; gpt-oss-120b A/B alternative produced lower-quality output for $0.40 — see `docs/output_notes/04_notebook_output.md`) |
-| Phase 4 (Group A · 5 experiments × 12,723) | ~30–40 h Groq | small, Groq is cheap |
+| Phase 4 (Group A · 5 experiments × 1,273 test split) | ~1 h Groq total (recalibrated 2026-05-06 from ~30–40 h on full 12,723) | $0 (Groq free tier) |
 | Phase 4 RAGAS judge (5 archs × 234 × applicable metrics) | ~3–4 h | **~$140–160 Claude Sonnet 4.6** (recalibrated 2026-05-06; original $10–15 estimate was ~10× optimistic on per-row call counts — Faithfulness alone makes 2–4 calls/row, Context Precision makes k=5 calls/row, etc.) |
 | Phase 5 (adaptive) | ~10 h Groq | small |
 | Phase 6 (LIME/SHAP, sampled to 200/arch) | ~6–10 h Groq | small |
