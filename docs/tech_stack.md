@@ -68,7 +68,7 @@ scikit-learn                                                Streamlit (optional)
 |---|---|---|---|---|
 | **Answerer** (the system under test) | Groq Cloud | `llama-3.3-70b-versatile` | `groq` | Fast LPU inference; 131k context; open-weights LLaMA reproducible |
 | **Golden-set constructor** (Phase 3) | OpenAI | `gpt-4o` | `openai` | **Locked 2026-05-04** after empirical A/B against `openai/gpt-oss-120b` on Groq (78 % salvageable vs 64 %, 0 loop errors vs 11 — see `docs/output_notes/04_notebook_output.md`). Three-pass JSON pipeline with new prompts (structured `selected_chunks`, verbatim `best_gold_context`, `answer_match` boolean, multi-hop tightening). Production run 2026-05-04: 234 / 300 accepted at $6.61. |
-| **RAGAS judge** (Phase 4) | Anthropic | `claude-3-5-sonnet-20241022` | `anthropic` | Different family from BOTH generator (LLaMA) and constructor (`gpt-4o`) — kills evaluator-on-evaluator bias. Stays on the paid API: Faithfulness scoring requires sub-statement hallucination detection where Claude is validated against human raters far more thoroughly than open-weights judges. |
+| **RAGAS judge** (Phase 4) | Anthropic | `claude-sonnet-4-6` | `anthropic` + `langchain-anthropic` (wrapped via `ragas.llms.LangchainLLMWrapper(ChatAnthropic(...))` so `evaluate()` accepts it; the modern `ragas.llms.llm_factory` returns an `InstructorLLM` that the legacy `Metric` tree rejects, see [`docs/todo.md`](todo.md) decision log 2026-05-06) | Different family from BOTH generator (LLaMA) and constructor (`gpt-4o`) — kills evaluator-on-evaluator bias. **Upgraded 2026-05-06** from `claude-3-5-sonnet-20241022` — same per-token pricing ($3/M input · $15/M output), materially better structured-output adherence + sub-statement claim verification. Stays on the paid API: Faithfulness scoring requires sub-statement hallucination detection where Claude is validated against human raters far more thoroughly than open-weights judges. |
 
 The three-family separation is **load-bearing** for the methodology defence: every metric the judge produces is from a model that was not involved in writing the references or generating the answers.
 
@@ -136,9 +136,17 @@ This section records what we *thought* about and *didn't* pick, so the methodolo
 - **Claude as answerer** — same closed-weights concern; also conflicts with using Claude as the RAGAS judge (would re-introduce same-family bias).
 - **Self-hosted LLaMA on RunPod / Lambda** — ~$200 for 50 hours of A100 vs ~$0 on Groq. Not worth it.
 
-### 3.4 RAGAS judge — **Claude 3.5 Sonnet**
+### 3.4 RAGAS judge — **Claude Sonnet 4.6**
 
-**Locked:** `claude-3-5-sonnet-20241022`.
+**Locked 2026-05-06:** `claude-sonnet-4-6` (upgraded from `claude-3-5-sonnet-20241022`).
+
+**Why upgrade:**
+- **Same pricing** — Anthropic held Sonnet at `$3/M input · $15/M output` across the 3.5 → 4.x line, so the upgrade is cost-neutral per token.
+- **Better structured-output adherence** — RAGAS judges depend on multi-field JSON; Sonnet 4.6 produces fewer parse failures than 3.5 on this workload, meaning fewer NaN scores and fewer wasted calls.
+- **Better sub-statement claim verification** — Faithfulness scoring decomposes answers into atomic claims and verifies each against retrieved context. Sonnet 4.6 catches subtler claim-context mismatches that 3.5 misses.
+- **Defensibility in 2026** — defaulting to a Q4-2024 model when a 2025+ Sonnet exists invites the viva question *"why didn't you use the current best judge?"*. The 4.6 lock makes that a non-issue.
+
+**Cost recalibrated 2026-05-06**: Phase 4 RAGAS budget is **~$140–160** (5 archs × 234 golden × applicable metrics). The earlier $10–15 estimate was ~10× optimistic — it didn't fully account for the multi-call structure of Faithfulness (2–4 calls/row) and Context Precision (k=5 calls/row).
 
 **Rejected (with reason):**
 - `gpt-4o-mini` as judge — same OpenAI family as the constructor → mild evaluator-on-evaluator bias on metrics that consume the reference (Context Recall/Precision, Answer Correctness). For ~$10–15, Claude removes that risk entirely.
@@ -188,7 +196,7 @@ This section records what we *thought* about and *didn't* pick, so the methodolo
 ```
 GROQ_API_KEY=...        # Phase 4 onward — LLaMA 3.3 70B answerer
 OPENAI_API_KEY=...      # Phase 3 — gpt-4o golden-set constructor
-ANTHROPIC_API_KEY=...   # Phase 4 onward — Claude 3.5 Sonnet RAGAS judge
+ANTHROPIC_API_KEY=...   # Phase 4 onward — Claude Sonnet 4.6 RAGAS judge
 ```
 
 All three needed before experiments. Demo UI (Phase 10) in cached mode needs **none** of them.

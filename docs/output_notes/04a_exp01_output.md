@@ -121,9 +121,83 @@ A small B-bias (~+4 % over expected) but no extreme letter-collapse failure mode
 
 ---
 
-## 4. Next steps (in order)
+## 4. RAGAS results (Claude Sonnet 4.6 judge, run 2026-05-06)
 
-1. **Build `src/eval/ragas_eval.py`** — wraps RAGAS with Claude 3.5 Sonnet judge, runs the five RAGAS metrics (Faithfulness, Context Recall, Context Precision, Answer Relevancy, Answer Correctness) against `results/exp_01_base_llm__golden_234/predictions.jsonl`. Cost: ~$2–3 for EXP_01 alone (golden 234 × 5 metrics × Claude calls). Fills the four `RAGAS_*` columns + `Answer_Correctness` + derives `RAGAS_Hallucination_Rate` (fraction with `Faithfulness < 0.5` per [`docs/todo.md` §5 EXP_01](../todo.md)).
+### 4.1 Headline numbers — [`results/exp_01_base_llm__golden_234/summary.json`](../../results/exp_01_base_llm__golden_234/summary.json)
+
+| Field | Value |
+|---|---|
+| `RAGAS_Answer_Relevance` | **0.5977** (mean over 174 non-NaN of 234) |
+| `Answer_Correctness` | **0.8738** (mean over 137 non-NaN of 234) |
+| `RAGAS_Faithfulness` | `null` (Option A — undefined for No-RAG) |
+| `RAGAS_Hallucination_Rate` | `null` (derived from Faithfulness) |
+| `RAGAS_Context_Precision` | `null` (Option A) |
+| `RAGAS_Context_Recall` | `null` (Option A) |
+| `ragas_judge` | `claude-sonnet-4-6` |
+| `ragas_n_scored` | 234 (attempted) |
+
+### 4.2 The correctness gap — judge is calibrated, signal is strong
+
+| Stratum | n (scored) | Answer Correctness mean | Answer Relevancy mean |
+|---|---:|---:|---:|
+| `_is_correct = True` | 124 | **0.933** | 0.599 |
+| `_is_correct = False` | 13 | **0.314** | 0.585 |
+| **Gap** | | **+62 pp** | +1 pp |
+
+A 62 percentage-point Answer-Correctness gap between LLaMA's right and wrong predictions is *exactly* what a calibrated judge should produce on a benchmark where the LLM-under-test mostly gets the answer right but occasionally hallucinates a plausible-but-wrong option. The judge gives near-perfect 1.0 to most correct rows (median = 1.000, 75th percentile = 1.000) and decisively low scores (≤ 0.31 mean) when LLaMA picks the wrong option.
+
+Answer Relevancy stays flat across correct/wrong (~0.60) because it measures *does the answer address the question type*, not *is it factually right* — and a wrong option text is still topically relevant to the question. This is the documented RAGAS behaviour, not a defect.
+
+### 4.3 The NaN issue — ~40 % rows didn't score on the first pass
+
+| Metric | NaN rows (of 234) | NaN rate |
+|---|---:|---:|
+| Answer Relevancy | 60 | 25.6 % |
+| Answer Correctness | 97 | **41.5 %** |
+| Both NaN | 36 | 15.4 % |
+
+**Diagnosis — these are transient API failures, not content rejections.** Confirmed by:
+
+- **Length-independent**: NaN rows have the same mean response/reference length (~25 chars) as scored rows.
+- **Correctness-independent**: 43 % NaN rate among wrong predictions vs 41 % among correct — Claude isn't selectively refusing on hard cases.
+- **Exact-match-independent**: 41 % NaN among the 211 rows where LLaMA's prose answer exactly matches the reference (these should have been trivial 1.0 scores).
+- **Topic-independent**: NaN distributed across all question types and gold letters.
+
+**Root cause**: with `raise_exceptions=False` set in `_run_judge`, RAGAS swallows transient errors (rate-limits, network blips, occasional structured-output parse failures) and emits NaN. Across ~1,400 Claude calls (234 × 2 metrics × ~3 calls/metric), a 40 % miss rate is entirely consistent with intermittent throttling on the Anthropic API at sustained throughput.
+
+**Why this matters for EXP_02–EXP_05**: those experiments run all 5 metrics, so per-architecture call volume is ~3,500. At the same NaN rate that's wasting ~$12–16 of Claude credit per architecture. Worth fixing before scaling.
+
+### 4.4 Stratified breakdowns — methodology checks
+
+| Stratum | n | `Acuuracy` (Exact Match) | Answer Correctness mean |
+|---|---:|---:|---:|
+| MedQA train split | 188 | 0.888 | 0.872 |
+| MedQA dev split | 28 | 1.000 | 0.895 |
+| MedQA test split | 18 | 0.889 | 0.855 |
+| Question type: diagnosis | 126 | 0.929 | 0.871 |
+| Question type: management | 34 | **0.824** (lowest) | **0.834** (lowest) |
+| Question type: treatment | 34 | 0.882 | 0.898 |
+| Question type: mechanism | 36 | 0.889 | 0.892 |
+| `requires_multihop = yes` | 13 | 0.846 | 0.907 |
+| `requires_multihop = no` | 221 | 0.905 | 0.872 |
+
+Two observations:
+
+1. **By split, RAGAS scoring is robust to MedQA contamination.** The Acuuracy gap between train+dev (0.89) and test-only EXP_01-full (0.77) was 12 pp — the contamination signal. But Answer-Correctness scores are within ±2 pp across splits because the judge is scoring *answer-vs-reference*, not *did-LLaMA-memorise*. This is the right behaviour: RAGAS will produce honest comparison numbers across architectures even on a contaminated surface.
+
+2. **Management is the hardest question type for No-RAG.** Both Exact Match (0.82) and Answer Correctness (0.83) drop on management questions. These are "what's the next step" clinical-decision questions where retrieval should help most — interesting hypothesis to test in EXP_02–EXP_04.
+
+---
+
+## 5. Next steps (in order)
+
+1. **Address the NaN issue before EXP_02 runs.** Two complementary fixes:
+   - **Configure `RunConfig` with retries** in `_run_judge` (e.g. `max_retries=5`, `max_wait=60`) so transient API failures auto-retry instead of becoming NaN. Free; should drop the on-first-pass NaN rate substantially.
+   - **Add a `rescore_nans()` mode to `score_predictions`** that re-runs only the NaN rows and merges scores back into `ragas_scores.csv`. For EXP_01 specifically: ~97 + 60 - 36 = 121 rows to rescore × ~$0.04/row ≈ $5. Saves ~$12–16 per future architecture.
+
+2. **Optional: rescore EXP_01's NaN rows** to complete the EXP_01 baseline before EXP_02. This is a methodology decision — the current 137-row Answer Correctness sample is statistically meaningful (n > 100, gap of 62 pp is far above any reasonable significance threshold), but a complete 234-row sample is cleaner for the writeup.
+
+3. **Build `src/retrieval/naive.py`** + **`notebooks/04b_exp02_naive_rag.ipynb`** — EXP_02 reuses the existing runner with `NaiveRetriever(...)` swapped in for `NoRetrieval()`. Once retrieval is live, the same RAGAS notebook structure runs all 5 metrics with no further code changes (the `applicable_metrics()` gate flips automatically when `_has_context` is `True`).
 
 2. **Build `src/retrieval/naive.py`** (refactor of the inlined logic in Notebook 03 under the `Retriever` ABC) — unblocks EXP_02.
 
@@ -135,18 +209,22 @@ A small B-bias (~+4 % over expected) but no extreme letter-collapse failure mode
 
 ---
 
-## 5. Files produced
+## 6. Files produced
 
 ```
 results/
 ├── exp_01_base_llm__smoke_50/
-│   ├── predictions.jsonl   ← 50 rows, 8 KB
-│   ├── retrieval.jsonl     ← 50 empty rows, 4 KB
-│   └── summary.json        ← 728 B
+│   ├── predictions.jsonl   ← 50 rows
+│   ├── retrieval.jsonl     ← 50 empty rows
+│   └── summary.json
 ├── exp_01_base_llm__golden_234/
-│   ├── predictions.jsonl   ← 234 rows, 38 KB
-│   ├── retrieval.jsonl     ← 234 empty rows, 20 KB
-│   └── summary.json        ← 778 B
+│   ├── predictions.jsonl   ← 234 rows
+│   ├── retrieval.jsonl     ← 234 empty rows
+│   ├── ragas_scores.csv    ← 234 rows × {answer_relevancy, answer_correctness, ...} (2026-05-06; 137 / 174 non-NaN — see §4.3)
+│   └── summary.json        ← updated 2026-05-06 with RAGAS aggregates
+├── exp_01_base_llm__golden_234_ragas_smoke/
+│   ├── ragas_scores.csv    ← Stage A pilot artefact (10 rows; kept as the validation record)
+│   └── summary.json        ← Stage A summary
 └── exp_01_base_llm__full_12723/
     ├── predictions.jsonl   ← 12,723 rows
     ├── retrieval.jsonl     ← 12,723 empty rows

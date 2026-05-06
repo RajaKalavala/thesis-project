@@ -30,6 +30,8 @@ requests>=2.31
 # --- LLM clients (Step 0 smoke test, baseline & beyond) -------------------
 groq>=0.11
 openai>=1.40
+anthropic>=0.40                    # Claude Sonnet 4.6 RAGAS judge (Phase 4 onward)
+langchain-anthropic>=1.4           # ChatAnthropic — wrapped by ragas.llms.LangchainLLMWrapper for evaluate()
 
 # --- Retrieval & embeddings (Naive / Sparse / Hybrid / Multi-Hop RAG) -----
 sentence-transformers>=3.0

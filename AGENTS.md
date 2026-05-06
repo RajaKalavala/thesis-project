@@ -38,7 +38,7 @@ The locked decisions are in [`plan.md` §0](plan.md). Specifically:
 - ChromaDB (one collection, not two).
 - 400-token chunks with 80-token overlap.
 - 300-row golden subset (was 1,000; user reduced for budget).
-- LLaMA 3.3 70B answerer · GPT-4o constructor · Claude 3.5 Sonnet judge.
+- LLaMA 3.3 70B answerer · GPT-4o constructor · Claude Sonnet 4.6 judge.
 - 12,723 full MedQA US evaluation surface.
 
 If you think a locked decision should change, **state your case clearly and ask the user** before editing files. Do not silently revise.

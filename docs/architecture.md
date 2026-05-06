@@ -82,7 +82,7 @@ src/
 ├── generation/
 │   ├── groq_client.py         # Groq client (LLaMA 3.3 70B answerer)
 │   ├── openai_client.py       # OpenAI client (gpt-4o golden-set constructor)
-│   ├── anthropic_client.py    # Claude 3.5 Sonnet for RAGAS judge
+│   ├── anthropic_client.py    # Claude Sonnet 4.6 for RAGAS judge
 │   ├── prompts.py             # base evidence-grounded + No-RAG + Multi-Hop prompts (Phase 4)
 │   └── golden_prompts.py      # 3-pass golden-set construction prompts (Phase 3)
 ├── eval/
@@ -164,7 +164,7 @@ class BaseConfig:
     multi_hop_budget: int = 3
 
     constructor_model: str = "gpt-4o"               # locked 2026-05-04 after A/B vs gpt-oss-120b
-    judge_model: str = "claude-3-5-sonnet-20241022"
+    judge_model: str = "claude-sonnet-4-6"
 
 @dataclass(frozen=True)
 class ExperimentConfig:

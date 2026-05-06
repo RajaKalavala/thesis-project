@@ -22,7 +22,7 @@
 | 8 | Evaluation surface (full) | **All 12,723 MedQA US questions** | Train + dev + test combined — canonical benchmark scope per the corrected workbook. |
 | 9 | Golden RAGAS reference subset | **Stratified 300 questions** built from scratch in two stages: 50-row smoke pilot → 250 more for production (= 300 total) | Drives Faithfulness, Context Recall, Context Precision, Answer Correctness on 300 rows; the remaining 12,423 still get exact-match accuracy and retrieval recall. Sized for cost-efficiency while preserving per-stratum analysis room (≥ 60 rows per `question_type` bucket). |
 | 10 | Golden-set **constructor** LLM | **`gpt-4o`** via OpenAI API — three-pass JSON pipeline with new prompts (structured `selected_chunks`, verbatim `best_gold_context`, `answer_match` boolean, multi-hop tightening) | **Locked 2026-05-04 after empirical A/B comparison** (see `docs/output_notes/04_notebook_output.md`): gpt-4o produced 78 % salvageable rows vs 64 % for `openai/gpt-oss-120b` on identical 50 questions, 0 loop errors vs 11, and 5/5 vs 3/5 faithfulness on the smoke question. Production run on 300 questions: **234 accepted, 53 needs_review, 13 dropped** at $6.61 total. Multi-hop tightening in Pass 2 dropped over-labelling from 66 % → 6 %. Cost is small in absolute terms ($6.61 for the whole golden set); the cost saving from gpt-oss-120b ($0.40 for 300) was not worth the calibration loss. |
-| 11 | RAGAS **judge** LLM | **`claude-3-5-sonnet`** (Anthropic) — different family from generator AND constructor | Kills evaluator-on-evaluator bias. ~$10–15 across 300 golden × 5 metrics × 5 architectures. |
+| 11 | RAGAS **judge** LLM | **`claude-sonnet-4-6`** (Anthropic) — different family from generator AND constructor | **Locked 2026-05-06**, upgraded from `claude-3-5-sonnet-20241022`. Same per-token pricing ($3/M input, $15/M output) but materially better structured-output adherence + sub-statement claim verification — exactly the workload RAGAS Faithfulness needs. Realistic cost ~$140–160 across 234 golden × applicable metrics × 5 architectures (recalibrated 2026-05-06; original $10–15 estimate was ~10× optimistic on per-row call counts). |
 | 12 | Top-k passed to LLM | **k=5** | Tune in EXP_02 if Context Recall is the bottleneck. |
 
 ---
@@ -229,7 +229,7 @@ The full RAGAS suite needs **reference contexts** and **reference answers** that
 
 **Why `gpt-4o` for the constructor:** validated empirically against `openai/gpt-oss-120b` (a free open-weights alternative on Groq) — same 50 questions, same prompts, same retrieval. Result: gpt-4o produced 78 % salvageable rows vs 64 %, 0 loop errors vs 11, and 5/5 faithfulness vs 3/5 on the common smoke question. The cost difference for 300 rows ($6.61 vs $0.40) is small relative to the total thesis budget; the quality difference compounds into every Faithfulness / Context Precision / Answer Correctness number in chapters 4 and 5. **Full A/B comparison preserved** in `docs/output_notes/04_notebook_output.md`.
 
-**Why a different family for the judge:** the constructor is OpenAI/`gpt-4o`. The answerer (Phase 4) is LLaMA. The RAGAS judge in Phase 4 is **Claude 3.5 Sonnet** — a third family — to kill evaluator-on-evaluator bias on metrics where the reference answer (constructor output) is consumed by the judge (Context Recall, Context Precision, Answer Correctness). The judge stays on the paid API because RAGAS metrics like Faithfulness require sub-statement-level hallucination detection where Claude/GPT-4-class judges are validated against human raters far more thoroughly than open-weights alternatives.
+**Why a different family for the judge:** the constructor is OpenAI/`gpt-4o`. The answerer (Phase 4) is LLaMA. The RAGAS judge in Phase 4 is **Claude Sonnet 4.6** — a third family — to kill evaluator-on-evaluator bias on metrics where the reference answer (constructor output) is consumed by the judge (Context Recall, Context Precision, Answer Correctness). The judge stays on the paid API because RAGAS metrics like Faithfulness require sub-statement-level hallucination detection where Claude/GPT-4-class judges are validated against human raters far more thoroughly than open-weights alternatives.
 
 **Why build from scratch:** earlier exploratory work used MiniLM + 200-token chunks; those artefacts have been deleted. Building fresh against the new BGE-large + 400/80-token index ensures every `chunk_id` reference is valid.
 
@@ -255,7 +255,7 @@ Build the `src/` modules in this dependency order before running any of EXP_01�
 8. `src/generation/groq_client.py` — Groq call wrapper with disk cache (key = sha256 of `model + temperature + prompt`) so repeats are free
 9. `src/generation/prompts.py` — base evidence-grounded prompt + No-RAG variant + Multi-Hop prompt
 10. `src/eval/non_llm_metrics.py` — Exact Match, Retrieval Recall@K (against golden `gold_chunks`), MRR, nDCG@K, latency
-11. `src/eval/ragas_eval.py` — wrap the 5 RAGAS metrics with **`claude-3-5-sonnet`** as judge; runs only on the 300 golden rows
+11. `src/eval/ragas_eval.py` — wrap the 5 RAGAS metrics with **`claude-sonnet-4-6`** as judge; runs only on the 234-row accepted golden subset
 12. `src/eval/runner.py` — `run_experiment(retriever, dataset_df, output_dir)` writes `predictions.jsonl`, `retrieval.jsonl`, `summary.json`
 
 ### Run order
@@ -501,18 +501,18 @@ If every experiment writes its `summary.json` with **exactly the column names fr
 | Phase 2 (chunk + embed once + ChromaDB + BM25) | **~6 h MPS measured** (chunk ~1 min · embed ~355 min · Chroma 1m 39s · BM25 8 s — recalibrated 2026-05-04 from the original ~25 min estimate) | $0 |
 | Phase 3 (golden 300, staged 50 pilot + 250 production) — `gpt-4o` via OpenAI API | ~80 min measured | **$6.61** measured 2026-05-04 (matches the original locked plan; gpt-oss-120b A/B alternative produced lower-quality output for $0.40 — see `docs/output_notes/04_notebook_output.md`) |
 | Phase 4 (Group A · 5 experiments × 12,723) | ~30–40 h Groq | small, Groq is cheap |
-| Phase 4 RAGAS judge (5 archs × 300 × 5 metrics) | ~1.5 h | ~$10–15 Claude 3.5 Sonnet |
+| Phase 4 RAGAS judge (5 archs × 234 × applicable metrics) | ~3–4 h | **~$140–160 Claude Sonnet 4.6** (recalibrated 2026-05-06; original $10–15 estimate was ~10× optimistic on per-row call counts — Faithfulness alone makes 2–4 calls/row, Context Precision makes k=5 calls/row, etc.) |
 | Phase 5 (adaptive) | ~10 h Groq | small |
 | Phase 6 (LIME/SHAP, sampled to 200/arch) | ~6–10 h Groq | small |
 | Phase 7 (confidence) | <1 h compute (re-uses prior outputs) | $0 |
 | Phase 8 (taxonomy) | 3 h human + 30 min compute | ~$3 GPT-4o-mini if classifier-assisted |
 | Phase 9 (synthesis) | 30 min | $0 |
 | **Phase 10 (demo UI, optional)** | ~5 days human time, spread A/B/C | $0 (Streamlit Cloud free tier) |
-| **Total** | **~3–4 weeks elapsed (+ ~5 days if Phase 10 taken)** | **~$25–35** |
+| **Total** | **~3–4 weeks elapsed (+ ~5 days if Phase 10 taken)** | **~$150–170** (recalibrated 2026-05-06: Phase 3 $6.61 + Phase 4 RAGAS ~$140–160 + Phase 8 taxonomy ~$3) |
 
-The dominant cost is **wall-clock**, not money. Disk-cache every Groq + Claude + GPT-4o response by `(experiment_id, question_id, prompt_hash)` so resuming after a rate-limit pause is free.
+The dominant cost is **wall-clock**, not money — Phase 4 RAGAS is the one paid item that meaningfully affects the budget. Disk-cache every Groq + Claude + GPT-4o response by `(experiment_id, question_id, prompt_hash)` so resuming after a rate-limit pause is free, and use file-level `ragas_scores.csv` resumability so a failed Claude run can pick up where it stopped without re-spending.
 
-**API key inventory (locked 2026-05-04):** `GROQ_API_KEY` (LLaMA 3.3 70B generator), `OPENAI_API_KEY` (`gpt-4o` golden-set constructor + optional `gpt-4o-mini` taxonomy classifier), `ANTHROPIC_API_KEY` (Claude 3.5 Sonnet RAGAS judge). Three keys, three families. Demo UI in cached mode needs **none** of them.
+**API key inventory (locked 2026-05-06):** `GROQ_API_KEY` (LLaMA 3.3 70B generator), `OPENAI_API_KEY` (`gpt-4o` golden-set constructor + optional `gpt-4o-mini` taxonomy classifier), `ANTHROPIC_API_KEY` (Claude Sonnet 4.6 RAGAS judge). Three keys, three families. Demo UI in cached mode needs **none** of them.
 
 ---
 
@@ -523,7 +523,7 @@ The dominant cost is **wall-clock**, not money. Disk-cache every Groq + Claude +
 | Groq rate limits stall a long run | High | Disk-cache every response; resumable runners; back off + retry on 429s. |
 | Golden-set construction labels `requires_multihop = yes` too aggressively (legacy 77%) | Medium | In Pass 2 prompt, define multi-hop as *"requires combining ≥2 distinct facts from ≥2 distinct passages"*. Spot-check 30 rows. |
 | BGE-large index doesn't fit in 16 GB | Low | 67k × 1024 × 4 bytes ≈ 274 MB. Plenty of headroom on a 16 GB box. ChromaDB on disk. |
-| Same-LLM-family bias (LLaMA generates, LLaMA judges) | High if not mitigated | RAGAS judge = **`claude-3-5-sonnet`** (different family from both generator and constructor). |
+| Same-LLM-family bias (LLaMA generates, LLaMA judges) | High if not mitigated | RAGAS judge = **`claude-sonnet-4-6`** (different family from both generator and constructor). |
 | Multi-Hop RAG loops indefinitely | Medium | Hard cap 3 hops, hard cap tokens/hop, stop early if no new chunks retrieved. |
 | LIME/SHAP perturbation cost explodes | Medium | Sample 200 Q/arch (documented in methodology). |
 | Manual hallucination labels are subjective | Medium | Have a second annotator label 30 cases; report inter-annotator agreement (Cohen's κ). |

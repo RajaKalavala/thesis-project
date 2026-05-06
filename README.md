@@ -19,7 +19,7 @@ Why it matters: nobody has done this comparison on a medical benchmark covering 
 - **Python 3.12** in a local `.venv/` on a MacBook M1 Pro · 16 GB
 - **LLaMA 3.3 70B** (via Groq) as the answerer · same model across all architectures
 - **BGE-large-en-v1.5** embeddings · **ChromaDB** vector store · **rank-bm25** sparse index · 400/80-token chunks
-- **GPT-4o** as golden-set constructor · **Claude 3.5 Sonnet** as RAGAS judge (three-family separation kills evaluator bias)
+- **GPT-4o** as golden-set constructor · **Claude Sonnet 4.6** as RAGAS judge (three-family separation kills evaluator bias)
 - **RAGAS** + LIME + SHAP for evaluation and explainability
 - **Streamlit** for an optional cached-mode demo UI (Phase 10)
 

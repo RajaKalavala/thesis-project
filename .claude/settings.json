@@ -12,7 +12,9 @@
       "Bash(/Users/rajak/Workstation/Projects/myGitHub/thesis-project/.venv/bin/python)",
       "Bash(.venv/bin/python tests/test_exp01_modules.py)",
       "Bash(/Users/rajak/Workstation/Projects/myGitHub/thesis-project/.venv/bin/python -c ' *)",
-      "Bash(find src *)"
+      "Bash(find src *)",
+      "Bash(.venv/bin/python tests/test_ragas_eval.py)",
+      "Bash(.venv/bin/pip uninstall *)"
     ]
   }
 }

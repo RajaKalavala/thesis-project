@@ -36,12 +36,16 @@ The runner (`src/eval/runner.py::run_experiment`) writes all three. Each line in
 | `n_correct` | int | sum of `is_correct` in `predictions.jsonl` | — |
 | `Recall@3` / `Recall@5` / `Recall@10` | float ∈ [0, 1] \| null | mean over golden rows of `recall_at_k(retrieved, gold_chunks, k)` from `non_llm_metrics.py`. `null` for EXP_01 (no retrieval) and for non-golden surfaces (no chunk-level ground truth). | Table 1 / Table 8 |
 | `MRR` | float ∈ [0, 1] \| null | mean over golden rows | Table 1 / Table 8 |
-| `RAGAS_Faithfulness` | float ∈ [0, 1] \| null | filled by `src/eval/ragas_eval.py` (Claude 3.5 Sonnet judge, golden-234 only) | Table 1 |
-| `RAGAS_Hallucination_Rate` | float ∈ [0, 1] \| null | fraction of golden rows with `RAGAS_Faithfulness < 0.5` per [`docs/todo.md` §5 EXP_01](todo.md) | Table 1 |
-| `RAGAS_Answer_Relevance` | float ∈ [0, 1] \| null | RAGAS judge | Table 1 |
-| `RAGAS_Context_Precision` | float ∈ [0, 1] \| null | RAGAS judge (golden-only) | Table 1 |
-| `RAGAS_Context_Recall` | float ∈ [0, 1] \| null | RAGAS judge (golden-only) | Table 1 |
-| `Answer_Correctness` | float ∈ [0, 1] \| null | RAGAS judge | Table 1 |
+| `RAGAS_Faithfulness` | float ∈ [0, 1] \| null | filled by `src/eval/ragas_eval.py` (Claude Sonnet 4.6 judge, golden-234 only) — **null for EXP_01 No-RAG** (see §2.3) | Table 1 |
+| `RAGAS_Hallucination_Rate` | float ∈ [0, 1] \| null | fraction of golden rows with `RAGAS_Faithfulness < 0.5`. null whenever Faithfulness is null | Table 1 |
+| `RAGAS_Answer_Relevance` | float ∈ [0, 1] \| null | RAGAS judge — context-independent, runs for every architecture | Table 1 |
+| `RAGAS_Context_Precision` | float ∈ [0, 1] \| null | RAGAS judge (golden-only) — **null for EXP_01 No-RAG** (see §2.3) | Table 1 |
+| `RAGAS_Context_Recall` | float ∈ [0, 1] \| null | RAGAS judge (golden-only) — **null for EXP_01 No-RAG** (see §2.3) | Table 1 |
+| `Answer_Correctness` | float ∈ [0, 1] \| null | RAGAS judge — context-independent, runs for every architecture | Table 1 |
+| `ragas_metrics_run` | list[str] \| absent | which metrics were actually scored (e.g. `["answer_relevancy", "answer_correctness"]` for EXP_01) | provenance |
+| `ragas_n_scored` | int \| absent | number of golden rows that received scores | provenance |
+| `ragas_judge` | str \| absent | judge model id (e.g. `"claude-sonnet-4-6"`) | provenance |
+| `ragas_timestamp_utc` | str (ISO-8601) \| absent | when judging finished | provenance |
 | `mean_latency_s` | float | mean of per-row `latency_s` across the **whole `predictions.jsonl`** (including resumed sessions) | Table 1 *Latency* |
 | `wall_time_s_this_run` | float | wall time for the *current* invocation; resumed sessions reset this | — |
 | `n_calls_this_run` | int | API calls this invocation made (excludes resume-skipped rows) | — |
@@ -59,7 +63,24 @@ A field is `null` (not `0`, not `"N/A"`) when the experiment didn't compute it. 
 
 `null` survives the Excel paste as a literal blank cell, which is the right signal for "we didn't measure this." `0.0` would falsely imply "we measured this and it was zero."
 
-### 2.3 Excel-column-name fidelity
+### 2.3 RAGAS metric applicability — per architecture
+
+Three of the five RAGAS metrics depend on `retrieved_contexts`. EXP_01 is the No-RAG baseline — `retrieved_contexts = []` for every row — so context-dependent metrics are **not measured** rather than **set to zero**. This is *Option A* in the EXP_01 design ([discussion in `docs/output_notes/04a_exp01_output.md`](output_notes/04a_exp01_output.md)).
+
+| Metric | Needs context? | EXP_01 (No-RAG) | EXP_02 Naive · EXP_03 Sparse · EXP_04 Hybrid · EXP_05 Multi-Hop |
+|---|---|---|---|
+| `RAGAS_Faithfulness` | yes | **null** (undefined) | computed |
+| `RAGAS_Hallucination_Rate` | derived from Faithfulness | **null** | computed (fraction with Faithfulness < 0.5) |
+| `RAGAS_Context_Precision` | yes | **null** | computed |
+| `RAGAS_Context_Recall` | yes | **null** | computed |
+| `RAGAS_Answer_Relevance` | no | computed | computed |
+| `Answer_Correctness` | no | computed | computed |
+
+The runner detects applicability automatically — `src/eval/ragas_eval.py::applicable_metrics()` returns the context-independent subset when `_has_context` is `False` for every row, the full set otherwise. No per-experiment configuration needed.
+
+**Methodology defence**: assigning `RAGAS_Faithfulness = 0` to No-RAG would assert "100 % hallucination" without ever running the judge, which is harder to defend in a viva than reporting `null` and explaining that *"context-grounded faithfulness is undefined when no context is retrieved"*. The thesis discussion still gets to make the *"RAG enables faithfulness scoring at all"* point — just framed as architectural, not numerical.
+
+### 2.4 Excel-column-name fidelity
 
 Field names mirror Excel headers verbatim, **including the `Acuuracy` typo**. Reason: the workbook is the source of truth for table headers; renaming on our side guarantees a headers mismatch when pasting. If the workbook header is later corrected, this schema follows in lockstep.
 

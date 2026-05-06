@@ -86,7 +86,7 @@ BM25(q,d) = Σ_{t ∈ q} IDF(t) · [ f(t,d)·(k1+1) / ( f(t,d) + k1·(1 - b + b�
 | **Prompt template** | Single evidence-grounded template (locked across all four architectures) | Multi-Hop uses an extended variant for question decomposition; everything else identical. |
 | **Chunking** | Recursive 400-token chunks, **80-token overlap (20%)**, dropping <30-token fragments | 20% overlap is standard in 2024–25 medical-RAG papers. ~36k chunks. |
 | **Golden-set constructor LLM** | `gpt-4o` (OpenAI) — three-pass JSON pipeline with new prompts (structured `selected_chunks`, verbatim `best_gold_context`, `answer_match`, multi-hop tightening) | **Locked 2026-05-04** after empirical A/B vs `openai/gpt-oss-120b` (78 % salvageable vs 64 %; 0 vs 11 loop errors). Production run: 234/300 accepted at $6.61. |
-| **RAGAS judge LLM** | `claude-3-5-sonnet` (Anthropic) | Different family from generator (LLaMA) AND constructor (`gpt-4o`) — kills evaluator-on-evaluator bias. Stays paid: Faithfulness scoring requires sub-statement hallucination detection where Claude is validated against human raters more thoroughly than open-weights judges. |
+| **RAGAS judge LLM** | `claude-sonnet-4-6` (Anthropic) | Different family from generator (LLaMA) AND constructor (`gpt-4o`) — kills evaluator-on-evaluator bias. Stays paid: Faithfulness scoring requires sub-statement hallucination detection where Claude is validated against human raters more thoroughly than open-weights judges. **Locked 2026-05-06** (upgrade from `claude-3-5-sonnet-20241022` — same pricing, materially better structured-output adherence). |
 
 ---
 
@@ -260,7 +260,7 @@ The clinical use case: a doctor can see *which textbook passage(s)* the system r
 | Lang & data | Python 3.12, Pandas 2.3, NumPy 2.2, PyArrow | Preprocessing, chunk handling, results analysis |
 | LLM & prompts | LangChain, Sentence-Transformers | Prompt flows, retrieval chains, dense embeddings |
 | Retrieval | ChromaDB (two collections), rank-bm25 | Dense + sparse retrieval |
-| Inference | LLaMA 3.3 70B via Groq (answerer); `gpt-4o` via OpenAI (golden-set constructor — locked 2026-05-04 after A/B); Claude 3.5 Sonnet via Anthropic (RAGAS judge) | Three-family separation kills evaluator bias |
+| Inference | LLaMA 3.3 70B via Groq (answerer); `gpt-4o` via OpenAI (golden-set constructor — locked 2026-05-04 after A/B); Claude Sonnet 4.6 via Anthropic (RAGAS judge — locked 2026-05-06) | Three-family separation kills evaluator bias |
 | Eval & XAI | RAGAS, LIME, SHAP, scikit-learn | Metrics + explainability |
 | Viz | Matplotlib, Seaborn | Plots & comparison charts |
 | VC | Git, GitHub | Repo management |
