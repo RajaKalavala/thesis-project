@@ -40,6 +40,19 @@ OPTIONS:
 Output exactly one letter (A, B, C, D, or E). Nothing else."""
 
 
+MULTI_HOP_SUBQUERY_TEMPLATE = """You are helping a medical expert answer a USMLE clinical question by searching textbook chunks. Given the original question and the evidence retrieved so far, write a SHORT follow-up search query (5–15 words) targeting a specific gap in the evidence — a fact, mechanism, treatment, or differential the current evidence does not cover.
+
+Output ONLY the follow-up query as a single line. No preamble, no explanation, no question mark required.
+
+ORIGINAL QUESTION:
+{question}
+
+EVIDENCE SO FAR (numbered passages):
+{evidence_block}
+
+Follow-up query:"""
+
+
 def format_evidence_block(chunks: Iterable[str]) -> str:
     """Render retrieved chunk texts as a numbered evidence block."""
     lines = []
@@ -70,6 +83,21 @@ def build_no_rag_prompt(question: str, options: dict[str, str]) -> str:
     return NO_RAG_TEMPLATE.format(
         question=question.strip(),
         options_block=format_options_block(options),
+    )
+
+
+def build_multi_hop_subquery_prompt(
+    question: str,
+    accumulated_chunk_texts: list[str],
+) -> str:
+    """For EXP_05 Multi-Hop RAG. Given the original question + evidence
+    retrieved so far, prompt the LLM to generate a focused follow-up search
+    query targeting an evidence gap. Output is one line of plain text (no
+    JSON, no leading/trailing punctuation guarantee — clean it at the call
+    site)."""
+    return MULTI_HOP_SUBQUERY_TEMPLATE.format(
+        question=question.strip(),
+        evidence_block=format_evidence_block(accumulated_chunk_texts),
     )
 
 

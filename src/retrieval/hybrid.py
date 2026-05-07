@@ -7,9 +7,16 @@ RRF formula (Cormack, Clarke & Buettcher 2009):
 with `k = 60` per `plan.md §0 #6`. RRF only uses **ranks**, not raw similarity
 scores, so the dense and sparse retrievers don't need score-calibration.
 
-Used by:
-- Notebook 04 (Stage B — golden-set construction-time retrieval)
-- EXP_04 Hybrid RAG experiment (Phase 4)
+This module exposes two APIs that share the same fusion logic:
+
+1. **`hybrid_top_k(...)`** — function-based, used by Notebook 04 golden-set
+   construction (where the caller manages embedder/chroma/bm25 lifecycles
+   directly). Kept stable for backwards compatibility.
+
+2. **`HybridRetriever`** — class conforming to the `Retriever` ABC, used by
+   the runner in `src/eval/runner.py` for EXP_04. Wraps `hybrid_top_k`
+   internally and joins back to `chunks_df` to populate `Chunk.text` /
+   `Chunk.book_name`.
 """
 from __future__ import annotations
 
@@ -17,9 +24,11 @@ from collections import defaultdict
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from src.data.embedder import embed_queries
 from src.data.indices import bm25_top_k
+from src.retrieval.base import Chunk, Retriever
 
 RRF_K = 60
 
@@ -103,3 +112,70 @@ def hybrid_top_k_with_text(
                 "n_tokens": int(row["n_tokens"]),
             })
     return out
+
+
+# ---------------------------------------------------------------------------
+# `Retriever` ABC subclass — used by the EXP_04 runner
+# ---------------------------------------------------------------------------
+
+
+class HybridRetriever(Retriever):
+    """Hybrid dense + sparse retrieval via RRF, conforming to the `Retriever`
+    ABC. Used by the runner for EXP_04.
+
+    Constructor is heavyweight: BGE-large + ChromaDB collection + BM25 payload
+    + chunks lookup. Build once at notebook startup and reuse across all
+    questions in a run.
+
+    Score semantics:
+        `Chunk.score = RRF score` ∈ [0, 2/rrf_k] = [0, ~0.033]. RRF scores are
+        comparable WITHIN a question (top-k ordering is meaningful) but not
+        across questions or retrievers — they're just rank-fusion weights.
+        Higher = better, per the project-wide `Retriever` convention.
+    """
+
+    def __init__(
+        self,
+        embedder_model: Any,
+        chroma_collection: Any,
+        bm25_payload: dict,
+        chunks_df: pd.DataFrame,
+        *,
+        fetch_per_retriever: int | None = None,
+        rrf_k: int = RRF_K,
+    ) -> None:
+        self._embedder = embedder_model
+        self._chroma = chroma_collection
+        self._bm25 = bm25_payload
+        self._fetch_per_retriever = fetch_per_retriever
+        self._rrf_k = rrf_k
+        # Pre-compute chunk_id → text/book_name lookup as a dict (~10× faster
+        # than repeated DataFrame.loc on a 67k-row frame).
+        self._by_id = (
+            chunks_df.set_index("chunk_id")[["text", "book_name"]].to_dict("index")
+        )
+
+    def retrieve(self, question: str, k: int) -> list[Chunk]:
+        if k <= 0:
+            return []
+        pairs = hybrid_top_k(
+            question,
+            embedder_model=self._embedder,
+            chroma_coll=self._chroma,
+            bm25_payload=self._bm25,
+            k=k,
+            fetch_per_retriever=self._fetch_per_retriever,
+            rrf_k=self._rrf_k,
+        )
+        chunks: list[Chunk] = []
+        for cid, score in pairs:
+            row = self._by_id.get(cid, {})
+            chunks.append(
+                Chunk(
+                    chunk_id=str(cid),
+                    book_name=str(row.get("book_name", "unknown")),
+                    text=str(row.get("text", "")),
+                    score=float(score),
+                )
+            )
+        return chunks

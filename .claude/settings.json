@@ -15,7 +15,10 @@
       "Bash(find src *)",
       "Bash(.venv/bin/python tests/test_ragas_eval.py)",
       "Bash(.venv/bin/pip uninstall *)",
-      "Bash(.venv/bin/python tests/test_naive_retriever.py)"
+      "Bash(.venv/bin/python tests/test_naive_retriever.py)",
+      "Bash(.venv/bin/python tests/test_sparse_retriever.py)",
+      "Bash(.venv/bin/python tests/test_hybrid_retriever.py)",
+      "Bash(.venv/bin/python tests/test_multi_hop_retriever.py)"
     ]
   }
 }
