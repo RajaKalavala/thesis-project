@@ -277,6 +277,43 @@ For each architecture: also score against the 300 golden rows with full RAGAS. T
 - **Table 8** Retrieval Quality (4 RAG rows)
 - **Table 9** Before/After RAG Comparison
 
+### 6.1 Phase 4 close-out (2026-05-10) — Group A baseline results
+
+All 5 architectures' baselines + RAGAS are complete. Cross-architecture table:
+
+| Architecture | acc_test | acc_golden | F | Hall | CP | CR | AC | AR |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| EXP_01 No-RAG | **0.7738** | 0.9017 | n/a | n/a | n/a | n/a | 0.8738 | 0.598 |
+| EXP_02 Naive Dense | 0.7573 | 0.8504 | 0.131 | 0.896 | 0.329 | 0.412 | 0.838 | 0.596 |
+| EXP_03 Sparse BM25 | 0.7581 | 0.8376 | 0.040 | 0.966 | 0.081 | 0.107 | 0.838 | 0.597 |
+| EXP_04 Hybrid RRF | 0.7659 | 0.8376 | 0.094 | 0.917 | 0.280 | 0.348 | 0.827 | 0.597 |
+| **EXP_05 Multi-Hop** | **0.7958** | **0.9017** | **0.283** | **0.737** | **0.374** | **0.711** | **0.869** | 0.595 |
+
+**Headline (one-liner)**: EXP_05 Multi-Hop is the only RAG architecture in the comparison to beat No-RAG on the contamination-clean test split (+2.20 pp), and it dominates every RAGAS metric. Single-shot retrieval (Naive, Sparse, Hybrid) all underperform No-RAG by 0.79–1.65 pp.
+
+**Falsifiable hypothesis verdicts** (anchored in EXP_02 §4 + EXP_03 §4):
+
+| # | Hypothesis | Verdict | Anchor | Result |
+|---|---|---|---|---|
+| 1 | Sparse Context Precision > 0.33 | ✗ **FALSIFIED** | [`04b_exp02_output.md` §4](docs/output_notes/04b_exp02_output.md) | got 0.081 (worse than dense) |
+| 2 | Hybrid Acuuracy on test_1273 > 0.76 | ✓ **SUPPORTED** | [`04c_exp03_output.md` §4](docs/output_notes/04c_exp03_output.md) | got 0.7659 (just clears) |
+| 3 | Hybrid Context Precision ≥ 0.50 | ✗ **FALSIFIED** | [`04b_exp02_output.md` §4](docs/output_notes/04b_exp02_output.md) | got 0.280 (worse than Naive's 0.329) |
+| 4 | Multi-Hop Acuuracy ≥ 0.7573 | ✓ **SUPPORTED** | [`04b_exp02_output.md` §3.5](docs/output_notes/04b_exp02_output.md) | got 0.7958 (+3.85 pp) |
+| 5 | Multi-Hop Faithfulness > 0.05 on multi-hop subset | ✓ **SUPPORTED** | [`04b_exp02_output.md` §3.5](docs/output_notes/04b_exp02_output.md) | got 0.229 (+18 pp threshold margin) |
+
+**Implications for downstream phases**:
+
+- **Phase 5 EXP_07 adaptive routing**: the proposal's three-way Simple/Moderate/Complex → Naive/Hybrid/Multi-Hop split is now under review. Oracle ceiling on No-RAG ∪ Multi-Hop alone = 0.8531 on test_1273; full 5-arch oracle = 0.8696. **A binary No-RAG / Multi-Hop router may capture most of the gain** without the Hybrid lane (which has CP < Naive). EXP_07 should test both routing-table variants.
+- **Phase 7 confidence-aware rejection**: Multi-Hop is the only architecture with a graded Faithfulness distribution (median 0.25). On Naive/Sparse/Hybrid, median F = 0.000 — thresholding is unstable. The threshold sweep {0.5, 0.6, 0.7, 0.8, 0.9} should be run on Multi-Hop primarily; Naive/Hybrid may need a {0.1, 0.2, 0.3} regime.
+- **Discussion chapter narrative** is now three acts: (1) EXP_01→02 *naive dense retrieval hurts on a memorisation-strong LLM*; (2) EXP_03→04 *single-shot retrieval — sparse, hybrid, RRF-fused — does not solve the retrieval-quality problem*; (3) EXP_05 *iterative multi-hop retrieval is what delivers grounded improvement.* The strongest single piece of evidence is EXP_03's CP=0.081 with unchanged accuracy — direct empirical decoupling of retrieval quality from accuracy on a contaminated benchmark.
+
+Full details in the per-experiment output notes:
+- [`04a_exp01_output.md`](docs/output_notes/04a_exp01_output.md) (No-RAG + RAGAS AR/AC)
+- [`04b_exp02_output.md`](docs/output_notes/04b_exp02_output.md) (Naive Dense + 5 RAGAS)
+- [`04c_exp03_output.md`](docs/output_notes/04c_exp03_output.md) (Sparse BM25 + 5 RAGAS, RAGAS section added 2026-05-10)
+- [`04d_exp04_output.md`](docs/output_notes/04d_exp04_output.md) (Hybrid RRF + 5 RAGAS)
+- [`04e_exp05_output.md`](docs/output_notes/04e_exp05_output.md) (Multi-Hop + 5 RAGAS — **the headline finding**)
+
 ---
 
 ## 7. Phase 5 — Group B: Adaptive Retrieval (EXP_06, EXP_07)
@@ -501,14 +538,14 @@ If every experiment writes its `summary.json` with **exactly the column names fr
 | Phase 2 (chunk + embed once + ChromaDB + BM25) | **~6 h MPS measured** (chunk ~1 min · embed ~355 min · Chroma 1m 39s · BM25 8 s — recalibrated 2026-05-04 from the original ~25 min estimate) | $0 |
 | Phase 3 (golden 300, staged 50 pilot + 250 production) — `gpt-4o` via OpenAI API | ~80 min measured | **$6.61** measured 2026-05-04 (matches the original locked plan; gpt-oss-120b A/B alternative produced lower-quality output for $0.40 — see `docs/output_notes/04_notebook_output.md`) |
 | Phase 4 (Group A · 5 experiments × 1,273 test split) | ~1 h Groq total (recalibrated 2026-05-06 from ~30–40 h on full 12,723) | $0 (Groq free tier) |
-| Phase 4 RAGAS judge (5 archs × 234 × applicable metrics) | ~3–4 h | **~$140–160 Claude Sonnet 4.6** (recalibrated 2026-05-06; original $10–15 estimate was ~10× optimistic on per-row call counts — Faithfulness alone makes 2–4 calls/row, Context Precision makes k=5 calls/row, etc.) |
+| Phase 4 RAGAS judge (5 archs × 234 × applicable metrics) ✅ | **~6 h measured** | **~$50 measured** (EXP_01 $4.50 + EXP_02–05 ≈ $11–13 each = ~$50; recalibrated again 2026-05-10 from the 2026-05-06 estimate of $140–160. Empirical per-row cost was ~$0.05 across 5 metrics — closer to the *original* $10–15 estimate than the 2026-05-06 over-correction. The full Phase 4 RAGAS spend came in 3× *under* the 2026-05-06 ceiling.) |
 | Phase 5 (adaptive) | ~10 h Groq | small |
 | Phase 6 (LIME/SHAP, sampled to 200/arch) | ~6–10 h Groq | small |
 | Phase 7 (confidence) | <1 h compute (re-uses prior outputs) | $0 |
 | Phase 8 (taxonomy) | 3 h human + 30 min compute | ~$3 GPT-4o-mini if classifier-assisted |
 | Phase 9 (synthesis) | 30 min | $0 |
 | **Phase 10 (demo UI, optional)** | ~5 days human time, spread A/B/C | $0 (Streamlit Cloud free tier) |
-| **Total** | **~3–4 weeks elapsed (+ ~5 days if Phase 10 taken)** | **~$150–170** (recalibrated 2026-05-06: Phase 3 $6.61 + Phase 4 RAGAS ~$140–160 + Phase 8 taxonomy ~$3) |
+| **Total** | **~3–4 weeks elapsed (+ ~5 days if Phase 10 taken)** | **~$60 reconciled 2026-05-10** (Phase 3 $6.61 + Phase 4 RAGAS ~$50 measured + Phase 8 taxonomy ~$3 pending). Comfortably under any MSc thesis budget; the 2026-05-06 over-correction to $140–160 has been retired. |
 
 The dominant cost is **wall-clock**, not money — Phase 4 RAGAS is the one paid item that meaningfully affects the budget. Disk-cache every Groq + Claude + GPT-4o response by `(experiment_id, question_id, prompt_hash)` so resuming after a rate-limit pause is free, and use file-level `ragas_scores.csv` resumability so a failed Claude run can pick up where it stopped without re-spending.
 
@@ -531,6 +568,8 @@ The dominant cost is **wall-clock**, not money — Phase 4 RAGAS is the one paid
 | Index disagrees between sessions (different embedding model versions) | Low | Pin `sentence-transformers==3.0.x` and BGE model revision in requirements.txt. |
 | **(Phase 10) Demo UI schema drift** — `summary.json` shape changes mid-project, breaks the UI | Medium | Lock the schema in Stage A; document in `docs/results_schema.md`; CI-style assert in `src/eval/runner.py` that every produced `summary.json` matches the schema. |
 | **(Phase 10) UI consumes time better spent on experiments** | Medium-High | Phase 10 is **optional**. If at the end of Phase 9 the experiment results are weak or incomplete, drop the UI entirely and write up the thesis without it. |
+| **(Phase 4 close-out 2026-05-10) Hybrid RRF underperforms its hypothesis** — CP=0.280 (< 0.50 threshold and < Naive's 0.329) | Resolved as a finding | Documented as a publishable counter-result in [`docs/output_notes/04d_exp04_output.md` §4](docs/output_notes/04d_exp04_output.md): RRF requires both retrievers to clear a precision floor; sparse's CP=0.081 contaminates the fused union. Phase 5 EXP_07 routing-table design should test a binary No-RAG/Multi-Hop split before assuming Naive/Hybrid/Multi-Hop. |
+| **(Phase 4 close-out 2026-05-10) Naive/Sparse/Hybrid all underperform No-RAG by 0.8–1.7 pp on test_1273** | Resolved as central thesis finding | The contamination story (LLaMA pretrained on MedQA → 0.7738 No-RAG ceiling) plus single-shot retrieval's failure to ground the LLM (88 % of correct answers ungrounded on Naive) is the discussion-chapter anchor. Multi-Hop is the architecture that breaks the pattern (Acuuracy 0.7958, +2.20 pp; F=0.283). |
 
 ---
 
