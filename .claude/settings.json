@@ -19,7 +19,9 @@
       "Bash(.venv/bin/python tests/test_sparse_retriever.py)",
       "Bash(.venv/bin/python tests/test_hybrid_retriever.py)",
       "Bash(.venv/bin/python tests/test_multi_hop_retriever.py)",
-      "Bash(.venv/bin/python -c \"import json,sys; r=json.loads\\(sys.stdin.read\\(\\)\\); print\\('keys:',list\\(r.keys\\(\\)\\)\\); ctx=r.get\\('retrieved_contexts'\\) or r.get\\('contexts'\\) or []; print\\('n_contexts:',len\\(ctx\\) if hasattr\\(ctx,'__len__'\\) else 'n/a'\\); print\\('first ctx \\(first 200 chars\\):',str\\(ctx[0]\\)[:200] if ctx else 'EMPTY'\\); print\\('answer \\(first 200\\):',str\\(r.get\\('answer',r.get\\('pred',''\\)\\)\\)[:200]\\)\")"
+      "Bash(.venv/bin/python -c \"import json,sys; r=json.loads\\(sys.stdin.read\\(\\)\\); print\\('keys:',list\\(r.keys\\(\\)\\)\\); ctx=r.get\\('retrieved_contexts'\\) or r.get\\('contexts'\\) or []; print\\('n_contexts:',len\\(ctx\\) if hasattr\\(ctx,'__len__'\\) else 'n/a'\\); print\\('first ctx \\(first 200 chars\\):',str\\(ctx[0]\\)[:200] if ctx else 'EMPTY'\\); print\\('answer \\(first 200\\):',str\\(r.get\\('answer',r.get\\('pred',''\\)\\)\\)[:200]\\)\")",
+      "Bash(.venv/bin/python tests/test_complexity.py)",
+      "Bash(.venv/bin/python tests/test_adaptive.py)"
     ]
   }
 }
