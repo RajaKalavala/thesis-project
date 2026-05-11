@@ -1,0 +1,6 @@
+use_case,architecture,metric,value,rationale
+Lowest cost,NoRAG,groq_calls_per_q,1.0,Fewest Groq calls per question (cheapest deployment).
+Highest accuracy,MultiHop,accuracy_test_1273,0.795758051846033,"Top exact-match on the 1,273-question contamination-clean test split."
+Lowest hallucination,MultiHop,hallucination_rate_golden_234,0.7370689655172413,Lowest RAGAS Hallucination_Rate (fraction with Faithfulness < 0.5) on golden_234.
+Highest explainability,MultiHop,lime_shap_spearman,0.6324688371330164,Highest LIME-SHAP Spearman ρ on the EXP_12 retrieval-changed surface (Multi-Hop measured directly; Adaptive variants inherit by routing share).
+Best balanced,MultiHop,final_score,0.48552587532526753,Top of the plan §11 weighted ranking (0.25·Accuracy + 0.25·Faithfulness + 0.20·Retrieval + 0.15·Safety + 0.10·Explainability + 0.05·Latency).

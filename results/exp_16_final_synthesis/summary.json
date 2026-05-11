@@ -1,0 +1,96 @@
+{
+  "experiment_id": "EXP_16_FINAL_SYNTHESIS",
+  "phase": 9,
+  "dataset": "aggregated",
+  "n_architectures": 7,
+  "weights": {
+    "Accuracy": 0.25,
+    "Faithfulness": 0.25,
+    "Retrieval": 0.2,
+    "Safety": 0.15,
+    "Explainability": 0.1,
+    "Latency": 0.05
+  },
+  "weight_sum_check": 1.0,
+  "top_ranked": {
+    "architecture": "MultiHop",
+    "final_score": 0.4855
+  },
+  "ranking": [
+    {
+      "rank": 1,
+      "architecture": "MultiHop",
+      "final_score": 0.4855
+    },
+    {
+      "rank": 2,
+      "architecture": "Adaptive_B",
+      "final_score": 0.4755
+    },
+    {
+      "rank": 3,
+      "architecture": "Adaptive_A",
+      "final_score": 0.3887
+    },
+    {
+      "rank": 4,
+      "architecture": "Naive",
+      "final_score": 0.3433
+    },
+    {
+      "rank": 5,
+      "architecture": "Hybrid",
+      "final_score": 0.3218
+    },
+    {
+      "rank": 6,
+      "architecture": "Sparse",
+      "final_score": 0.2561
+    },
+    {
+      "rank": 7,
+      "architecture": "NoRAG",
+      "final_score": 0.2434
+    }
+  ],
+  "recommendations": {
+    "Lowest cost": {
+      "architecture": "NoRAG",
+      "metric": "groq_calls_per_q",
+      "value": 1.0
+    },
+    "Highest accuracy": {
+      "architecture": "MultiHop",
+      "metric": "accuracy_test_1273",
+      "value": 0.7958
+    },
+    "Lowest hallucination": {
+      "architecture": "MultiHop",
+      "metric": "hallucination_rate_golden_234",
+      "value": 0.7371
+    },
+    "Highest explainability": {
+      "architecture": "MultiHop",
+      "metric": "lime_shap_spearman",
+      "value": 0.6325
+    },
+    "Best balanced": {
+      "architecture": "MultiHop",
+      "metric": "final_score",
+      "value": 0.4855
+    }
+  },
+  "pareto_frontier": [
+    "NoRAG",
+    "MultiHop",
+    "Adaptive_A"
+  ],
+  "sensitivity_top_rank_by_regime": {
+    "accuracy_heavy": "MultiHop",
+    "compute_heavy": "Adaptive_B",
+    "plan_default": "MultiHop",
+    "safety_heavy": "MultiHop"
+  },
+  "normalisation_scheme": "raw_with_minmax_latency (RAGAS-style metrics native [0,1]; latency min-max-inverted in-set; NaN floors to 0)",
+  "timestamp_utc": "2026-05-11T17:42:09Z"
+}

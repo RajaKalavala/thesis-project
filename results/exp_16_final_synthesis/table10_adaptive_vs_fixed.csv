@@ -1,0 +1,10 @@
+metric,MultiHop,Adaptive_A,Adaptive_B,Δ_A_vs_MH,Δ_B_vs_MH,direction
+Accuracy (test_1273),0.7958,0.7863,0.7832,-0.0094,-0.0126,higher
+Faithfulness (golden_234),0.2833,0.1966,0.2756,-0.0868,-0.0077,higher
+Context Precision (golden_234),0.3737,0.3598,0.3792,-0.0139,0.0055,higher
+Context Recall (golden_234),0.7115,0.5705,0.7544,-0.141,0.0428,higher
+Hallucination Rate (golden_234),0.7371,0.8369,0.7529,-0.0998,-0.0159,lower
+LIME-SHAP Spearman ρ,0.6325,0.2549,0.4506,-0.3776,-0.1818,higher
+"Mean latency (s, test_1273)",0.66,0.6964,0.574,-0.0364,0.086,lower
+Groq calls / Q (test_1273),3.0,1.806,2.425,1.194,0.575,lower
+final_score (weighted),0.4855,0.3887,0.4755,-0.0968,-0.0101,higher
