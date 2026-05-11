@@ -1,0 +1,7 @@
+category,Hybrid,MultiHop,Naive,NoRAG,Sparse
+unsupported_diagnosis,0.1053,0.087,0.1714,0.0,0.1053
+unsupported_treatment,0.4474,0.4348,0.2286,0.0,0.3158
+wrong_reasoning_chain,0.4474,0.4783,0.6,0.0,0.5789
+partial_evidence_misuse,0.0,0.0,0.0,0.0,0.0
+option_mismatch,0.0,0.0,0.0,0.0,0.0
+context_omission,0.0,0.0,0.0,1.0,0.0

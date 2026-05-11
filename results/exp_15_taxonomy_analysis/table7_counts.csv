@@ -1,0 +1,7 @@
+category,Hybrid,MultiHop,Naive,NoRAG,Sparse
+unsupported_diagnosis,4,2,6,0,4
+unsupported_treatment,17,10,8,0,12
+wrong_reasoning_chain,17,11,21,0,22
+partial_evidence_misuse,0,0,0,0,0
+option_mismatch,0,0,0,0,0
+context_omission,0,0,0,23,0

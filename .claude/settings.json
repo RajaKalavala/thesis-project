@@ -29,7 +29,8 @@
       "Bash(.venv/bin/python tests/test_agreement.py)",
       "Bash(mkdir -p /Users/rajak/Workstation/Projects/myGitHub/thesis-project/src/confidence)",
       "Bash(touch /Users/rajak/Workstation/Projects/myGitHub/thesis-project/src/confidence/__init__.py)",
-      "Bash(.venv/bin/python tests/test_confidence.py)"
+      "Bash(.venv/bin/python tests/test_confidence.py)",
+      "Bash(.venv/bin/python tests/test_taxonomy.py)"
     ]
   }
 }
