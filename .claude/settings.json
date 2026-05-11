@@ -24,7 +24,9 @@
       "Bash(.venv/bin/python tests/test_adaptive.py)",
       "Bash(.venv/bin/python tests/test_lime_passage.py)",
       "Bash(.venv/bin/python -c \"import sys, json; [print\\(json.dumps\\(json.loads\\(l\\), indent=2\\)\\) for l in sys.stdin]\")",
-      "Bash(.venv/bin/python -c \"import sklearn; print\\('sklearn', sklearn.__version__\\); from sklearn.linear_model import Ridge; print\\('Ridge OK'\\); import numpy; print\\('numpy', numpy.__version__\\)\")"
+      "Bash(.venv/bin/python -c \"import sklearn; print\\('sklearn', sklearn.__version__\\); from sklearn.linear_model import Ridge; print\\('Ridge OK'\\); import numpy; print\\('numpy', numpy.__version__\\)\")",
+      "Bash(.venv/bin/python tests/test_shap_passage.py)",
+      "Bash(.venv/bin/python tests/test_agreement.py)"
     ]
   }
 }

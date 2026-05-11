@@ -409,6 +409,40 @@ Run **before** confidence-aware rejection because EXP_08's confidence vector con
 
 **Tables filled:** Table 6.
 
+### 8.1 Phase 6 close-out (2026-05-11) — passage-level XAI complete
+
+Phase 6 ran with **two methodology pivots** documented in full at [`docs/output_notes/06_exp10_11_12_output.md`](docs/output_notes/06_exp10_11_12_output.md):
+
+1. **LIME-LOO → subset-sampling LIME**. Leave-one-out ablation produced all-zero attribution on the smoke (chunks carry distributed grounding, removing 1 of k doesn't flip the answer). Pivoted to N=16 random binary masks + ridge regression. Both methods kept side-by-side for audit; subset-LIME is the canonical method.
+2. **Random 200-sample → retrieval-changed sample**. LIME has nothing to attribute on questions where chunks don't drive the answer (memorisation cases). Restricted to the 205 retrieval-changed Multi-Hop questions on test_1273 (101 fixes + 73 breaks + 31 both-wrong-different-letters).
+
+**EXP_10 canonical results** (`stage_b_retrievalchanged_mhop.jsonl`, 205 questions × Multi-Hop):
+- **Signal density**: 65.4 % correctness, 78.5 % same-letter. Attribution magnitudes span [−0.5, +0.5].
+- **Coefficient signs match causality**: on fix questions, 80 % of top-1 chunks have positive correctness coefs (chunks support gold); on break questions, 67 % have negative coefs (chunks distract). The flip across subsets is the empirical proof the method captures real causality.
+- **Retrieval-rank vs LLM-influence decoupling**: top-influence chunk is rank-0 only 13 % of the time; mean rank of top-influence chunk = 5.05. **Publishable counter-result**: BGE/RRF retrieval rank doesn't predict which chunk drives the LLM's answer.
+
+**EXP_11 KernelSHAP** (reuses Stage B data + No-RAG anchor; $0 new Groq):
+- Signal density 90.2 % (correctness) / 100 % (same-letter) — the No-RAG anchor materially helps.
+- Wall time: 0.1 sec total.
+
+**EXP_12 LIME ↔ SHAP agreement**:
+- Top-1 agreement: 51.5 % (correctness, n=134).
+- Top-3 overlap: mean 0.556, median 0.667.
+- **Spearman ρ: mean 0.632, median 0.706. 51 % of questions have strong agreement (ρ > 0.7).**
+- Agreement is highest on "break" questions (sameletter ρ = 0.732) — both methods agree most strongly on which chunks distracted the LLM.
+
+**Thesis-defensible methodology footnotes** anchored in [`docs/output_notes/06_exp10_11_12_output.md`](docs/output_notes/06_exp10_11_12_output.md):
+- LIME signal is well-defined only on retrieval-changed questions (§2.2 there).
+- LIME-LOO is structurally inadequate for distributed grounding (§2.1).
+- The No-RAG anchor raises SHAP signal density 65 → 90 % (§2.6).
+- LIME-SHAP strong rank correlation with moderate top-1 divergence — two complementary point-estimates feeding Phase 7 (§2.7).
+
+**Cost**: $0 (Groq only; LIME = subset perturbations on free tier; SHAP + agreement reuse LIME data with no new LLM calls). Wall time: 24 min Stage B + 0.1 sec SHAP + 0.05 sec agreement = ~24 min total. Cumulative project spend unchanged at ~$60.
+
+**Implications for Phase 7** (next):
+- Per-question agreement scores ((top-1, top-3, Spearman ρ) × (correctness, sameletter)) feed Phase 7's confidence vector alongside Faithfulness and retrieval scores.
+- On Multi-Hop, 51 % of retrieval-changed questions have strong LIME-SHAP agreement → these are the questions where the chunk-level attribution is reliable and the confidence signal is trustworthy.
+
 ---
 
 ## 9. Phase 7 — Group C: Confidence-Aware Rejection (EXP_08, EXP_09)
