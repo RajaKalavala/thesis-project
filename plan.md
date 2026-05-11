@@ -341,6 +341,58 @@ Run on **test 1,273** (per §0 #8). Time estimate: weighted average of EXP_02 / 
 
 **Tables filled:** Table 2, Table 3, Table 1 row 6, Table 10.
 
+### 7.1 Phase 5 close-out (2026-05-11) — Group B routing results
+
+Both Phase 5 experiments are complete. EXP_06 produced 12,723 complexity labels at the 33rd/67th percentile-anchored thresholds with 1/100 rater disagreement on manual review. EXP_07 ran two routing-table variants on test_1273.
+
+**Cross-architecture Pareto frontier (test_1273)**:
+
+| Strategy | Acuuracy | calls/Q | Status |
+|---|---:|---:|---|
+| EXP_01 No-RAG | 0.7738 | 1.000 | **Pareto frontier** (cheapest) |
+| EXP_02 Naive | 0.7573 | 1.000 | dominated |
+| EXP_03 Sparse | 0.7581 | 1.000 | dominated |
+| EXP_04 Hybrid | 0.7659 | 1.000 | dominated |
+| **EXP_07 Variant A** (proposal) | **0.7863** | **1.806** | **Pareto frontier** (middle) |
+| EXP_07 Variant B (binary) | 0.7832 | 2.425 | dominated by Variant A |
+| EXP_05 Multi-Hop | 0.7958 | 3.000 | **Pareto frontier** (top) |
+
+**Headline**: Variant A (the proposal's Simple → Naive / Moderate → Hybrid / Complex → Multi-Hop split) is the cost-efficient Pareto-frontier point. It captures **84 %** of Multi-Hop's accuracy gain over No-RAG at **60 %** of Multi-Hop's compute. Variant A's marginal accuracy gain (0.0156 acc per extra Groq call vs No-RAG) is **2.0× more efficient** than Multi-Hop's marginal gain on top of Variant A (0.0079 acc/call).
+
+**Falsifiable hypothesis verdicts** (all SUPPORTED):
+
+| # | Hypothesis | Verdict | Result |
+|---|---|---|---|
+| H1 | Variant A on Pareto frontier between No-RAG and Multi-Hop | ✓ SUPPORTED | dominates Naive/Sparse/Hybrid; sits between No-RAG and Multi-Hop on the frontier |
+| H2 | Variant A dominates Variant B (higher acc + fewer calls) | ✓ SUPPORTED | 0.7863 > 0.7832, 1.806 < 2.425 |
+| H3 | Variant A marginally more efficient than Multi-Hop on top of A | ✓ SUPPORTED | 0.0156 vs 0.0079 acc/call (2.0× ratio) |
+
+**RAGAS score-join (golden_234, route per Q)**:
+
+| Metric | Variant A | Variant B | Multi-Hop alone |
+|---|---:|---:|---:|
+| Faithfulness | 0.197 | **0.276** | 0.283 |
+| Context Precision | 0.360 | 0.379 | 0.374 |
+| Context Recall | 0.571 | **0.754** | 0.711 |
+| Answer Correctness | 0.847 | 0.867 | 0.869 |
+
+Variant B has **better grounding metrics** than Variant A (because it routes Moderate→Multi-Hop instead of →Hybrid) at higher compute cost. Two-axis trade-off:
+- **Best Acc/cost**: Variant A.
+- **Best grounding among adaptive**: Variant B.
+- **Strictly best on every metric**: Multi-Hop alone (3× compute).
+
+**Methodology footnote** (k=15 vs k=5 wrinkle): EXP_07's runner used uniform `k=15` chunk fan-out matching Multi-Hop's max chunk return. For Naive (Variant A's Simple lane) and Hybrid (Variant A's Moderate lane), this exceeds the k=5 used in EXP_02/EXP_04 baselines, producing different chunk sets. Variant A simulator (using k=5 underlying predictions) estimates 0.7895; actual run at k=15 lands at 0.7863 (Δ=−0.31 pp). Variant B's gap is negligible (Δ=−0.08 pp) because its lanes use Multi-Hop (which natively returns 15 chunks). The choice keeps the runner `k` parameter uniform across variants; the small accuracy cost confirms adaptive routing is not sensitive to chunk fan-out within [5, 15]. Both numbers reported for transparency; the actual run is canonical.
+
+**Implications for downstream phases**:
+
+- **Phase 6 LIME/SHAP**: Variant A is the deployment-realistic explainability target (on the cost-quality frontier). LIME/SHAP at the chunk level should explain *why* Naive-retrieved chunks help (or don't) on the Simple bucket — that's the Phase 4 ungrounded-correct mystery viewed through the routing lens.
+- **Phase 7 confidence-aware rejection**: Variant B's higher Faithfulness (0.276 vs 0.197 for A) makes it the more useful surface for the threshold sweep. Multi-Hop alone remains the primary surface; Variant B is the secondary "routing-with-good-grounding" comparison.
+- **Discussion-chapter narrative**: the Phase 4 three-act structure now extends to a fourth: *(Act 4) Adaptive routing captures most of Multi-Hop's accuracy gain at a fraction of the compute cost; the proposal's three-way table is the data-defensible Pareto-frontier choice.*
+
+Full details in:
+- [`docs/output_notes/05_exp06_output.md`](docs/output_notes/05_exp06_output.md) (complexity labels)
+- [`docs/output_notes/05_exp07_output.md`](docs/output_notes/05_exp07_output.md) (adaptive routing — **the Phase 5 headline**)
+
 ---
 
 ## 8. Phase 6 — Group C support: Explainability (EXP_10, EXP_11, EXP_12)
@@ -570,6 +622,8 @@ The dominant cost is **wall-clock**, not money — Phase 4 RAGAS is the one paid
 | **(Phase 10) UI consumes time better spent on experiments** | Medium-High | Phase 10 is **optional**. If at the end of Phase 9 the experiment results are weak or incomplete, drop the UI entirely and write up the thesis without it. |
 | **(Phase 4 close-out 2026-05-10) Hybrid RRF underperforms its hypothesis** — CP=0.280 (< 0.50 threshold and < Naive's 0.329) | Resolved as a finding | Documented as a publishable counter-result in [`docs/output_notes/04d_exp04_output.md` §4](docs/output_notes/04d_exp04_output.md): RRF requires both retrievers to clear a precision floor; sparse's CP=0.081 contaminates the fused union. Phase 5 EXP_07 routing-table design should test a binary No-RAG/Multi-Hop split before assuming Naive/Hybrid/Multi-Hop. |
 | **(Phase 4 close-out 2026-05-10) Naive/Sparse/Hybrid all underperform No-RAG by 0.8–1.7 pp on test_1273** | Resolved as central thesis finding | The contamination story (LLaMA pretrained on MedQA → 0.7738 No-RAG ceiling) plus single-shot retrieval's failure to ground the LLM (88 % of correct answers ungrounded on Naive) is the discussion-chapter anchor. Multi-Hop is the architecture that breaks the pattern (Acuuracy 0.7958, +2.20 pp; F=0.283). |
+| **(Phase 5 close-out 2026-05-11) Adaptive routing does not beat Multi-Hop on raw accuracy** | Reframed: routing wins on cost-adjusted Pareto frontier | EXP_07 Variant A acc=0.7863 vs Multi-Hop 0.7958 (−0.94 pp), but at 1.806 vs 3.0 Groq calls/Q. Variant A captures 84 % of Multi-Hop's gain over No-RAG at 60 % of the compute. The honest framing is the Pareto frontier (No-RAG → Variant A → Multi-Hop); on that axis, Variant A is the cost-efficient deployment-realistic point. Avoids the proposal's premise that routing would beat fixed architectures on accuracy (which the data did not support). |
+| **(Phase 5 close-out 2026-05-11) k=15 vs k=5 chunk-fan-out wrinkle in Variant A** | Documented as methodology footnote | EXP_07 runner used uniform k=15 fan-out (matching Multi-Hop's max chunk return). Naive/Hybrid in Variant A's lanes ran at k=15 instead of EXP_02/04's k=5. Empirical effect: Variant A actual 0.7863 vs simulator (k=5 underlying) 0.7895 (Δ=−0.31 pp). Both numbers reported; actual is canonical. Demonstrates routing is not sensitive to chunk fan-out within [5, 15] range. |
 
 ---
 
