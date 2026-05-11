@@ -39,7 +39,6 @@ Thumbs.db
 data/processed/
 data/indices/
 data/cache/
-results/
 *.faiss
 *.index
 

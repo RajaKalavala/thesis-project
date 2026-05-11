@@ -21,7 +21,10 @@
       "Bash(.venv/bin/python tests/test_multi_hop_retriever.py)",
       "Bash(.venv/bin/python -c \"import json,sys; r=json.loads\\(sys.stdin.read\\(\\)\\); print\\('keys:',list\\(r.keys\\(\\)\\)\\); ctx=r.get\\('retrieved_contexts'\\) or r.get\\('contexts'\\) or []; print\\('n_contexts:',len\\(ctx\\) if hasattr\\(ctx,'__len__'\\) else 'n/a'\\); print\\('first ctx \\(first 200 chars\\):',str\\(ctx[0]\\)[:200] if ctx else 'EMPTY'\\); print\\('answer \\(first 200\\):',str\\(r.get\\('answer',r.get\\('pred',''\\)\\)\\)[:200]\\)\")",
       "Bash(.venv/bin/python tests/test_complexity.py)",
-      "Bash(.venv/bin/python tests/test_adaptive.py)"
+      "Bash(.venv/bin/python tests/test_adaptive.py)",
+      "Bash(.venv/bin/python tests/test_lime_passage.py)",
+      "Bash(.venv/bin/python -c \"import sys, json; [print\\(json.dumps\\(json.loads\\(l\\), indent=2\\)\\) for l in sys.stdin]\")",
+      "Bash(.venv/bin/python -c \"import sklearn; print\\('sklearn', sklearn.__version__\\); from sklearn.linear_model import Ridge; print\\('Ridge OK'\\); import numpy; print\\('numpy', numpy.__version__\\)\")"
     ]
   }
 }
