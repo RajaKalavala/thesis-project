@@ -33,7 +33,11 @@
       "Bash(.venv/bin/python tests/test_taxonomy.py)",
       "Bash(.venv/bin/python tests/test_synthesis.py)",
       "Bash(.venv/bin/python /tmp/update_excel_phase9.py)",
-      "Bash(.venv/bin/python /tmp/update_excel_all_tables.py)"
+      "Bash(.venv/bin/python /tmp/update_excel_all_tables.py)",
+      "Bash(.venv/bin/python -m src.xai.run_cross_arch --pilot)",
+      "Bash(.venv/bin/python -m src.xai.run_cross_arch --archs naive,sparse,hybrid)",
+      "Bash(tee /tmp/cross_arch.log)",
+      "Bash(.venv/bin/python /tmp/update_excel_table6.py)"
     ]
   }
 }

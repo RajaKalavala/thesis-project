@@ -127,6 +127,101 @@ LIME and SHAP agree *strongly* on chunk ranking (ρ ≈ 0.63) but only *moderate
 
 ---
 
+## 2.9 Cross-architecture extension (2026-05-12) — Phase 6 v2 complete
+
+> **Update.** The "Multi-Hop only" framing in §1–§2.8 was empirically reconsidered. The cross-architecture XAI run on Naive / Sparse / Hybrid retrieval-changed subsets produced **clean, defensible signal on every single-shot RAG architecture** — overturning the earlier prediction that single-shot RAGs would have no meaningful attribution. The publishable nuance: single-shot architectures actually show **higher LIME-SHAP rank stability than Multi-Hop**, because their concentrated 5-chunk retrieval surfaces a smaller, sharper attribution set than Multi-Hop's ~12-chunk distributed grounding.
+
+### 2.9.1 What was run
+
+For each of Naive (EXP_02), Sparse (EXP_03), Hybrid (EXP_04) — identical pipeline to Multi-Hop:
+1. Identify the retrieval-changed subset (`No-RAG_pred ≠ arch_pred` on test_1273)
+2. Run subset-sampling LIME (N=16 random binary masks + ridge regression)
+3. Run KernelSHAP with No-RAG anchor on the same samples (no new Groq calls)
+4. Compute LIME-SHAP agreement (top-1, top-3 overlap, Spearman ρ)
+
+Standalone runner at [`src/xai/run_cross_arch.py`](../../src/xai/run_cross_arch.py); pilot validated on Naive's first 5 questions before scaling.
+
+| Architecture | Retrieval-changed n | Groq calls | LIME wall time |
+|---|---:|---:|---:|
+| Naive (EXP_02) | 186 | 2,976 | ~12 min |
+| Sparse (EXP_03) | 136 | 2,176 | ~9 min |
+| Hybrid (EXP_04) | 184 | 2,944 | ~12 min |
+| **Total** | **506** | **8,096** | **~33 min** |
+
+SHAP + agreement reuse LIME's samples — 0 new Groq calls, <0.2 sec each per architecture.
+
+### 2.9.2 Cross-architecture headline numbers
+
+| Architecture | n | LIME mean \|coef\| | SHAP density | Top-1 % | Top-3 % | Same-letter % | Spearman ρ | Rank |
+|---|---:|---:|---:|---:|---:|---:|---:|:---:|
+| **Hybrid RAG** | 184 | 0.551 | 87.5 % | **73.0 %** | 76.8 % | **92.4 %** | **+0.753** | **1** |
+| Naive RAG | 186 | 0.525 | 85.5 % | 59.2 % | 77.6 % | 81.7 % | +0.746 | 2 |
+| Sparse RAG | 136 | 0.511 | 81.6 % | 63.0 % | 75.0 % | 88.2 % | +0.738 | 3 |
+| Multi-Hop RAG | 205 | **0.602** | **90.2 %** | 51.5 % | 55.6 % | 78.5 % | +0.633 | 4 |
+| Adaptive RAG (Variant A, inherited) | (40.3 % MH share) | 0.243 | 36.4 % | 20.7 % | 22.4 % | 31.7 % | +0.255 | 5 |
+
+### 2.9.3 The unexpected finding — single-shot has *sharper* attribution than Multi-Hop
+
+The Phase-6-close hypothesis (anchored on the smoke results in §2.1–§2.2) was that Naive/Sparse/Hybrid would have low signal density because their median Faithfulness = 0.000 (Phase 4 §3.1). **Empirically, the retrieval-changed subsets of all three single-shot architectures produce LIME-SHAP rank agreement that is *higher* than Multi-Hop's** (Spearman ρ ≈ 0.74 vs Multi-Hop's 0.63).
+
+The mechanism — clean and publishable:
+
+- **Single-shot RAG retrieves k=5 chunks**. On the retrieval-changed subset (questions where chunks demonstrably moved the LLM), 1–2 chunks typically carry the signal and 3–4 are noise. Both LIME and SHAP agree sharply on which 1–2 chunks the LLM is using. **Top-1 agreement is high (59–73 %)**.
+- **Multi-Hop retrieves ~12 chunks across 3 iterative hops**. Even on retrieval-changed questions, grounding is **distributed across 3–5 chunks** (Phase 4: median F=0.25 means partial grounding across the chunk set, not concentrated on one). LIME and SHAP agree on the *general direction* (Spearman ρ = 0.63, still strong) but disagree more often on the single most-influential chunk (top-1 = 51.5 %).
+
+In plain English: **single-shot retrieval is easier to explain at the chunk level because there are fewer chunks competing for the top spot. Multi-Hop produces stronger absolute attribution magnitudes (mean |coef| 0.60 vs 0.51–0.55) but distributed across more chunks, so top-1 agreement is naturally lower.** Both findings are correct and complementary — sharpness and depth.
+
+### 2.9.4 What this overturns and what it preserves
+
+| Earlier claim | Updated claim |
+|---|---|
+| ❌ "Single-shot architectures have no meaningful attribution because F ≈ 0" | ✅ "Single-shot architectures have *sharp* attribution on the retrieval-changed subset because k=5 concentrates the signal" |
+| ✅ Multi-Hop has the highest signal density (90.2 %) | ✅ **Preserved** — Multi-Hop still has the highest SHAP density and mean \|coef\| |
+| ❌ "LIME-SHAP agreement is moderate (ρ ≈ 0.63) because both methods are noisy estimates" | ✅ Multi-Hop ρ = 0.63 is *lower than the single-shots*; the explanation is distributed grounding, not method noise. Single-shots all clear ρ > 0.73. |
+| ✅ Retrieval-rank vs LLM-influence decoupling (§2.5) | ✅ **Preserved** — top-influence chunk is rank-0 only 13.4 % of the time on Multi-Hop. The cross-arch run would extend this analysis to single-shots; not yet computed (deferred). |
+| ✅ Phase 7 confidence layer can use XAI agreement as a candidate signal | ✅ **Reinforced** — single-shot architectures now have XAI agreement scores too. If Phase 7 v2 extends to other architectures, the inputs are on disk. |
+
+### 2.9.5 Implications for the discussion chapter
+
+**The Act-5 narrative is upgraded from "Multi-Hop is the only architecture with meaningful attribution" to**:
+
+> *"Across all four RAG architectures on their retrieval-changed subsets, LIME and SHAP produce strong rank-correlated attribution (Spearman ρ ≥ 0.63). Single-shot RAG (Naive/Sparse/Hybrid) shows higher top-1 agreement and higher rank correlation (ρ ≈ 0.74) than Multi-Hop (ρ = 0.63) — a structural consequence of concentrated 5-chunk retrieval versus Multi-Hop's distributed ~12-chunk grounding. Multi-Hop produces stronger absolute signal magnitudes (mean |coef| 0.60 vs 0.51–0.55) but the influence is spread across more chunks. Both findings are complementary: single-shot is sharper, Multi-Hop is deeper."*
+
+### 2.9.6 Operational health
+
+- **Total cost**: $0 (all Groq free tier; SHAP + agreement reuse samples)
+- **Total wall time**: ~33 min Groq across 3 architectures
+- **Parse failures**: 0 across 8,096 calls
+- **JSONL outputs** mirror the Multi-Hop format: per-question samples + passages + ridge coefficients (LIME), Shapley values (SHAP), top-1/top-3/Spearman (agreement). Compatible with `src/xai/agreement.py` and Phase 7's signal-vector ingestion.
+
+### 2.9.7 Files produced (cross-arch addendum)
+
+```
+results/exp_10_lime_passage/
+├── stage_b_retrievalchanged_naive.jsonl     ← NEW 186 rows
+├── stage_b_retrievalchanged_sparse.jsonl    ← NEW 136 rows
+└── stage_b_retrievalchanged_hybrid.jsonl    ← NEW 184 rows
+
+results/exp_11_shap_passage/
+├── stage_b_retrievalchanged_naive.jsonl     ← NEW 186 rows
+├── stage_b_retrievalchanged_sparse.jsonl    ← NEW 136 rows
+└── stage_b_retrievalchanged_hybrid.jsonl    ← NEW 184 rows
+
+results/exp_12_agreement/
+├── stage_b_retrievalchanged_naive.jsonl     ← NEW 186 rows
+├── stage_b_retrievalchanged_sparse.jsonl    ← NEW 136 rows
+├── stage_b_retrievalchanged_hybrid.jsonl    ← NEW 184 rows
+└── cross_arch_aggregates.json               ← NEW per-arch headline numbers
+
+src/xai/run_cross_arch.py                    ← NEW standalone runner
+
+docs/thesis-files/
+└── Raja Kalavala Final Thesis Project Sheet.phase9.xlsx
+   ↳ Table 6 rows 75-79 updated with cross-arch numbers + Adaptive_A inheritance
+```
+
+---
+
 ## 4. Conclusions
 
 1. **Phase 6 is COMPLETE.** Three modules + three result files + 26 unit tests, all on disk. Tables 6 (LIME / SHAP / agreement) ready to populate from the JSONL outputs.
