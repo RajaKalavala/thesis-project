@@ -194,38 +194,71 @@ def _explainability_per_arch(
 ) -> dict[str, tuple[float, int]]:
     """Per-architecture mean LIME-SHAP Spearman ρ (correctness signal).
 
-    Multi-Hop has the direct measurement on the 205 retrieval-changed
-    questions. Adaptive Variants inherit Multi-Hop's score weighted by the
-    bucket share that gets routed to Multi-Hop. NoRAG, Naive, Sparse, Hybrid
-    have no measurement.
+    Reads each architecture's cross-arch agreement JSONL directly where present
+    (Phase 6 v2, 2026-05-12): mhop / naive / sparse / hybrid. NoRAG remains 0
+    by construction (no chunks → undefined attribution). Adaptive Variants
+    use route-weighted blending of the underlying architectures' measured
+    Spearman ρ values, using the test_1273 bucket counts.
+
+    Earlier version of this function used Multi-Hop's measured value × the
+    Multi-Hop routing share and set Naive/Sparse/Hybrid to NaN. That was
+    overturned by the 2026-05-12 cross-arch extension which produced clean
+    Spearman ρ values for every single-shot architecture on its own
+    retrieval-changed subset.
     """
     out: dict[str, tuple[float, int]] = {a: (float("nan"), 0) for a in ARCHITECTURES}
-    path = repo_root / "results/exp_12_agreement/stage_b_retrievalchanged_mhop.jsonl"
-    if not path.exists():
-        return out
-    rows = []
-    for line in path.read_text().splitlines():
-        # The JSONL writes NaN as a bare literal (not valid JSON); pre-clean.
-        rows.append(json.loads(line.replace("NaN", "null")))
-    df = pd.DataFrame(rows)
-    mh_spearman = pd.to_numeric(df.get("correctness_spearman"), errors="coerce").dropna()
-    if mh_spearman.empty:
-        return out
-    mh_mean = float(mh_spearman.mean())
-    out["MultiHop"] = (mh_mean, int(len(mh_spearman)))
 
-    # Adaptive Variants: weighted inheritance from Multi-Hop's measured signal.
+    # Map architecture → on-disk JSONL filename (single-shot + Multi-Hop only;
+    # NoRAG and Adaptive are computed below).
+    AGREEMENT_FILES = {
+        "Naive":    "stage_b_retrievalchanged_naive.jsonl",
+        "Sparse":   "stage_b_retrievalchanged_sparse.jsonl",
+        "Hybrid":   "stage_b_retrievalchanged_hybrid.jsonl",
+        "MultiHop": "stage_b_retrievalchanged_mhop.jsonl",
+    }
+    direct_spearman: dict[str, float] = {}
+    for arch, fname in AGREEMENT_FILES.items():
+        path = repo_root / "results/exp_12_agreement" / fname
+        if not path.exists():
+            continue
+        rows = [json.loads(l.replace("NaN", "null")) for l in path.read_text().splitlines()]
+        if not rows:
+            continue
+        df = pd.DataFrame(rows)
+        sp = pd.to_numeric(df.get("correctness_spearman"), errors="coerce").dropna()
+        if sp.empty:
+            continue
+        mean_sp = float(sp.mean())
+        direct_spearman[arch] = mean_sp
+        out[arch] = (mean_sp, int(len(sp)))
+
+    # Adaptive Variants: route-weighted blend across the underlying architectures
+    # actually routed to per bucket. NoRAG's contribution to Variant B is 0
+    # (no chunks → no attribution).
     md = pd.read_parquet(repo_root / "data/processed/medqa_4opt.parquet")
     test_qs = md[md["split"] == "test"]["question"].tolist()
     buckets = pd.Series([q_to_bucket.get(q) for q in test_qs]).dropna()
     bucket_counts = buckets.value_counts().to_dict()
-    total = sum(bucket_counts.values())
+    total = sum(bucket_counts.values()) or 1
+    SPEARMAN_BY_UNDERLYING = {
+        "NoRAG":    0.0,                                # no chunks → 0
+        "Naive":    direct_spearman.get("Naive", 0.0),
+        "Hybrid":   direct_spearman.get("Hybrid", 0.0),
+        "MultiHop": direct_spearman.get("MultiHop", 0.0),
+    }
     for v in ("Adaptive_A", "Adaptive_B"):
         routing = _ROUTING[v]
-        mh_share = sum(
-            bucket_counts.get(b, 0) for b, arch in routing.items() if arch == "MultiHop"
+        weighted = sum(
+            bucket_counts.get(b, 0) * SPEARMAN_BY_UNDERLYING.get(arch, 0.0)
+            for b, arch in routing.items()
         ) / total
-        out[v] = (mh_mean * mh_share, int(len(mh_spearman)))
+        # Carry the total n that contributed (sum of underlying-arch n's
+        # weighted by bucket share) for transparency in the raw table.
+        n_total = sum(
+            bucket_counts.get(b, 0)
+            for b in routing  # all 3 buckets contribute
+        )
+        out[v] = (float(weighted), int(n_total))
     return out
 
 

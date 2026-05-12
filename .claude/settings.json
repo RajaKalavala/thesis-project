@@ -37,7 +37,9 @@
       "Bash(.venv/bin/python -m src.xai.run_cross_arch --pilot)",
       "Bash(.venv/bin/python -m src.xai.run_cross_arch --archs naive,sparse,hybrid)",
       "Bash(tee /tmp/cross_arch.log)",
-      "Bash(.venv/bin/python /tmp/update_excel_table6.py)"
+      "Bash(.venv/bin/python /tmp/update_excel_table6.py)",
+      "Bash(.venv/bin/python /tmp/rerun_synthesis.py)",
+      "Bash(.venv/bin/python /tmp/update_excel_tables_10_12.py)"
     ]
   }
 }

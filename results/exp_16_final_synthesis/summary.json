@@ -30,22 +30,22 @@
     {
       "rank": 3,
       "architecture": "Adaptive_A",
-      "final_score": 0.3887
+      "final_score": 0.4335
     },
     {
       "rank": 4,
       "architecture": "Naive",
-      "final_score": 0.3433
+      "final_score": 0.4179
     },
     {
       "rank": 5,
       "architecture": "Hybrid",
-      "final_score": 0.3218
+      "final_score": 0.3972
     },
     {
       "rank": 6,
       "architecture": "Sparse",
-      "final_score": 0.2561
+      "final_score": 0.3299
     },
     {
       "rank": 7,
@@ -70,9 +70,9 @@
       "value": 0.7371
     },
     "Highest explainability": {
-      "architecture": "MultiHop",
+      "architecture": "Hybrid",
       "metric": "lime_shap_spearman",
-      "value": 0.6325
+      "value": 0.7534
     },
     "Best balanced": {
       "architecture": "MultiHop",
@@ -87,10 +87,11 @@
   ],
   "sensitivity_top_rank_by_regime": {
     "accuracy_heavy": "MultiHop",
-    "compute_heavy": "Adaptive_B",
+    "compute_heavy": "Naive",
     "plan_default": "MultiHop",
     "safety_heavy": "MultiHop"
   },
   "normalisation_scheme": "raw_with_minmax_latency (RAGAS-style metrics native [0,1]; latency min-max-inverted in-set; NaN floors to 0)",
-  "timestamp_utc": "2026-05-11T17:42:09Z"
+  "explainability_source": "cross-architecture v2 (2026-05-12) \u2014 direct Spearman \u03c1 for Naive/Sparse/Hybrid/MultiHop; route-weighted blend for Adaptive variants",
+  "timestamp_utc": "2026-05-12T12:22:42Z"
 }

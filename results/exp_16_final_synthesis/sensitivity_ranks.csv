@@ -1,8 +1,8 @@
 architecture,accuracy_heavy,compute_heavy,plan_default,safety_heavy
-MultiHop,1,2,1,1
-Adaptive_B,2,1,2,2
+MultiHop,1,4,1,1
+Adaptive_B,2,2,2,2
 Adaptive_A,3,6,3,3
-Naive,4,3,4,4
-Hybrid,5,4,5,5
-Sparse,7,7,6,6
-NoRAG,6,5,7,7
+Naive,4,1,4,4
+Hybrid,5,3,5,5
+Sparse,6,5,6,6
+NoRAG,7,7,7,7

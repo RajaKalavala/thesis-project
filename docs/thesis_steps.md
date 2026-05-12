@@ -1805,7 +1805,7 @@ For Variants A and B, per-step breakdown requires a bucket × step cross-tab. Th
 |---|---|
 | Phase 7 EXP_08-09 Confidence | Variant B's F=0.276 vs Variant A's F=0.197 — Variant B is the better surface for threshold-sweep analysis. But Phase 7 ran on Multi-Hop only (the surface with the most graded F distribution); EXP_07 informs which adaptive variant to run Phase 7 v2 on if scope expands. |
 | Phase 8 EXP_13-15 Taxonomy | Variants' wrong-answer subsets could be labelled to test whether adaptive routing changes the error-type distribution. Phase 8 ran on the 5 fixed architectures only; Variants flagged as a possible v2 extension. |
-| Phase 9 EXP_16 Synthesis | Both Variants enter the weighted ranking. Variant A places #3, Variant B #2, Multi-Hop #1 under the locked weights. The Phase 9 sensitivity analysis confirms Variant B wins only under compute-heavy reweighting. |
+| Phase 9 EXP_16 Synthesis | Both Variants enter the weighted ranking. **Under locked plan §11 weights** (after the 2026-05-12 v2 cross-arch explainability re-run): Multi-Hop #1 (0.4855), Variant B #2 (0.4755), Variant A #3 (0.4335) — top-2 unchanged from Phase 9 v1. **Sensitivity update**: the compute-heavy regime winner is now **Naive** (not Variant B) — Naive's high explainability ρ + fastest latency + lowest compute combine to vault it past Adaptive_B when latency is weighted 0.20. The "Adaptive wins balanced" expectation stays falsified across all four regimes. |
 
 ### Cost & time summary
 

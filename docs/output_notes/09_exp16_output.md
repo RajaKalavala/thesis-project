@@ -53,6 +53,86 @@ docs/thesis-files/
 
 ---
 
+## Phase 9 v2 — Synthesis re-run with cross-arch explainability (2026-05-12)
+
+After the Phase 6 v2 cross-architecture XAI extension (`docs/output_notes/06_exp10_11_12_output.md` §2.9) produced measured Spearman ρ values for Naive, Sparse, and Hybrid, the Phase 9 synthesis was re-run. The previous version of `src/synthesis/aggregator.py` had hard-coded the Explainability dimension to *"Multi-Hop's measured value × the Multi-Hop routing share"* for Adaptive variants, with 0 for every other non-Multi-Hop architecture. The updated aggregator reads each architecture's cross-arch agreement JSONL directly and computes Adaptive variants as a route-weighted blend of underlying-architecture Spearman ρ values.
+
+### Re-run mechanics
+
+- **Source of new Explainability values**: `results/exp_12_agreement/stage_b_retrievalchanged_{naive,sparse,hybrid,mhop}.jsonl` — mean of the `correctness_spearman` column per JSONL.
+- **Adaptive_A explainability** (Variant A routing: Simple → Naive, Moderate → Hybrid, Complex → Multi-Hop) = (366 × 0.746 + 394 × 0.753 + 513 × 0.633) / 1,273 = **0.7026**.
+- **Adaptive_B explainability** (Variant B routing: Simple → NoRAG, Moderate → Multi-Hop, Complex → Multi-Hop) = (366 × 0 + 394 × 0.633 + 513 × 0.633) / 1,273 = **0.4506** (unchanged from earlier; the NoRAG bucket contributes 0 by construction).
+- **NoRAG explainability**: stays at 0 (no chunks → undefined attribution).
+- All other component columns (Accuracy, Faithfulness, Retrieval, Safety, Latency) are **unchanged**.
+
+### New Explainability column values
+
+| Architecture | Old Explainability | **New Explainability** | Source |
+|---|---:|---:|---|
+| NoRAG | 0.000 | 0.000 | unchanged (no chunks) |
+| Naive | 0.000 | **0.7464** | direct ρ measurement (n=125) |
+| Sparse | 0.000 | **0.7381** | direct ρ measurement (n=100) |
+| Hybrid | 0.000 | **0.7534** | direct ρ measurement (n=148) |
+| Multi-Hop | 0.6325 | 0.6325 | unchanged |
+| Adaptive_A | 0.2549 (MH × 40.3 % share) | **0.7026** | route-weighted blend |
+| Adaptive_B | 0.4506 (MH × 71.3 % share) | 0.4506 | unchanged (formula is identical) |
+
+### Final ranking before vs after
+
+| Rank | Architecture | Old final_score | **New final_score** | Old → New rank |
+|:-:|---|---:|---:|:---:|
+| 1 | **Multi-Hop** | 0.4855 | **0.4855** | 1 → 1 (unchanged) |
+| 2 | **Adaptive_B** | 0.4755 | **0.4755** | 2 → 2 (unchanged) |
+| 3 | Adaptive_A | 0.3887 | **0.4335** | 3 → 3 (gain +0.045) |
+| 4 | Naive | 0.3433 | **0.4179** | 4 → 4 (gain +0.075) |
+| 5 | Hybrid | 0.3218 | **0.3972** | 5 → 5 (gain +0.075) |
+| 6 | Sparse | 0.2561 | **0.3299** | 6 → 6 (gain +0.074) |
+| 7 | NoRAG | 0.2434 | **0.2434** | 7 → 7 (unchanged) |
+
+**Top-2 ranking preserved.** Multi-Hop and Adaptive_B's component scores didn't change (their Explainability values were already direct measurements / fully blended). The middle five rows gained +0.04 to +0.08 each — the gap between Adaptive_A and Naive narrowed from 0.045 to 0.016, but the rank order stayed put.
+
+### Two recommendation changes from the re-run
+
+| Use case | Old recommendation | **New recommendation** |
+|---|---|---|
+| **Highest explainability** | Multi-Hop (ρ=0.6325) | **Hybrid (ρ=0.7534)** |
+| **Compute-heavy sensitivity regime** | Adaptive_B | **Naive** |
+
+The first change is the new headline: **Hybrid RAG now wins the explainability use case** because its top-1 LIME-SHAP agreement (73 %) and Spearman ρ (0.753) exceed Multi-Hop's (51.5 % / 0.633). The mechanism — concentrated k=5 retrieval produces sharper chunk-level attribution than Multi-Hop's distributed ~12-chunk grounding — is the new publishable finding from Phase 6 v2.
+
+The second change (compute-heavy regime) reflects that Naive's Spearman ρ + free-tier Groq cost vault it above Adaptive_B when latency and explainability are upweighted. Multi-Hop still wins under plan-default, accuracy-heavy, and safety-heavy regimes.
+
+### What stays unchanged (honesty list)
+
+- The **deployment recommendation** is unchanged: Multi-Hop + confidence-aware rejection at τ=0.6 for safety-critical clinical deployment.
+- The **central novelty** is unchanged: Phase 7 confidence-aware rejection over Multi-Hop (the only architecture with graded F).
+- The **Pareto frontier** is unchanged: NoRAG · Adaptive_A · Multi-Hop.
+- The **memorisation thesis** is unchanged: single-shot accuracy is decoupled from CP; EXP_03 Sparse's catastrophic CP=0.081 with near-tie accuracy is still the cleanest evidence.
+- The **"Adaptive should be best balanced" expectation** is still **falsified** on locked weights — Multi-Hop wins, Adaptive_A places #3.
+
+### What is empirically *new* — the publishable insight
+
+> **An inverse correlation between Faithfulness and explainability sharpness on this benchmark.** Architectures with higher Faithfulness (Multi-Hop, F=0.283) have *lower* top-1 LIME-SHAP agreement (51.5 %). Architectures with near-zero Faithfulness (Naive F=0.131, Sparse F=0.040, Hybrid F=0.094) have *higher* top-1 agreement (59–73 %). The mechanism: deeper grounding ⇒ distributed across more chunks ⇒ harder to attribute to one. **Single-shot RAG offers sharper top-1 attribution; Multi-Hop offers deeper distributed attribution. Both are valid; they trade off on this benchmark.** Publishable as a counter-result to the implicit *"better grounding ⇒ better explainability"* assumption in medical RAG.
+
+### Files refreshed
+
+| File | What changed |
+|---|---|
+| `src/synthesis/aggregator.py` | `_explainability_per_arch` rewritten to read cross-arch JSONLs directly + route-weighted blending for Adaptive variants |
+| `results/exp_16_final_synthesis/component_scores_raw.csv` | Explainability column repopulated with measured ρ |
+| `results/exp_16_final_synthesis/component_scores_normalised.csv` | Explainability normalised column updated |
+| `results/exp_16_final_synthesis/table12_final_ranking.csv` | New final_score values (rank order unchanged) |
+| `results/exp_16_final_synthesis/table10_adaptive_vs_fixed.csv` | LIME-SHAP Spearman ρ row updated; final_score row updated |
+| `results/exp_16_final_synthesis/recommendations.csv` | "Highest explainability" now Hybrid |
+| `results/exp_16_final_synthesis/sensitivity_ranks.csv` | "compute_heavy" winner now Naive |
+| `results/exp_16_final_synthesis/summary.json` | All ranks + recommendations + sensitivity top-rank refreshed |
+| `docs/thesis-files/Raja Kalavala Final Thesis Project Sheet.phase9.xlsx` | Table 12 rows 166-172 + Table 10 rows 135-143 |
+| `tests/test_synthesis.py` | All 11 tests still passing on the updated aggregator |
+
+The notebook `notebooks/09_exp16_final_ranking.ipynb` is **unchanged** — its code path is exactly the same (it calls the same `collect_architecture_metrics` → `normalise` → `weighted_score` chain). Re-running it manually in Jupyter will reproduce the new numbers because the underlying aggregator now reads the cross-arch data.
+
+---
+
 ## 2. Headline finding — Multi-Hop wins the locked weighted ranking; the proposal's "Adaptive should be best balanced" hypothesis is **falsified**
 
 Plan §11 weights: `0.25·Accuracy + 0.25·Faithfulness + 0.20·Retrieval + 0.15·Safety + 0.10·Explainability + 0.05·Latency`.
