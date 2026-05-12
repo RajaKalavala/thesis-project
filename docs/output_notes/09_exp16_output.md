@@ -22,7 +22,34 @@ results/exp_16_final_synthesis/
 ├── recommendations.csv                ← use-case → architecture mapping
 ├── sensitivity_ranks.csv              ← rank stability under 3 alt. weight regimes
 └── summary.json                       ← paste-into-Excel anchor + headlines
+
+docs/thesis-files/
+├── Raja Kalavala Final Thesis Project Sheet.xlsx                 ← original (untouched)
+├── Raja Kalavala Final Thesis Project Sheet.backup-2026-05-11.xlsx ← pre-edit backup
+└── Raja Kalavala Final Thesis Project Sheet.phase9.xlsx          ← Phase-9-filled
+                                                                     (Tables 10 + 12 paste-target,
+                                                                     ready to replace the original
+                                                                     once Excel is closed)
 ```
+
+**Excel paste status (2026-05-11, full fill)**: **All 12 tables filled** in the `Results Table` sheet of `.phase9.xlsx`. Header labels in column A (rows 6, 21, 34, 46, 60, 74, 88, 103, 117, 134, 151, 165) are preserved verbatim — the update script asserts label match before writing, so any future template drift will trip immediately. Yellow-highlighted rows mark the synthesis-winning architecture or operating point per table.
+
+| Table | Rows | Source artefacts | Notes |
+|---|---|---|---|
+| **1** Overall Architecture Performance | 7–12 | test_1273 summaries (Acc, n_correct, latency) + golden_234 summaries (RAGAS) + Phase 9 synthesis (Rank) | Adaptive row = Variant A. NoRAG's CP/CR/HR = N/A (no chunks). Multi-Hop row highlighted (rank #1). |
+| **2** Complexity-Based Adaptive Retrieval | 22–25 | Variant A predictions.jsonl × complexity_labels.parquet; underlying-arch per-bucket accuracy | Best-Fixed Baseline column reports the underlying arch's **per-bucket** accuracy on test_1273 (not its overall accuracy — using overall would mix in bucket-mix effects and inflate apparent gains). Gain/Loss matches notebook 05 §3.2 (+0.27 / −1.02 / −0.19 / −0.94 pp). |
+| **3** Question Complexity Labelling Summary | 35–37 | complexity_labels.parquet + medqa_4opt.parquet | n = 3,759 / 4,163 / 4,801 (29.5 / 32.7 / 37.7 %); avg question length 68.8 / 112.1 / 157.8 words. Rule criteria + reasoning cues preserved from workbook template. |
+| **4** Confidence-Aware Rejection Results | 47–51 | exp_09 RAGAS-only threshold sweep (τ=0.5) for Multi-Hop | Only Multi-Hop has Phase 7 data (the only architecture with a graded Faithfulness distribution); Naive/Sparse/Hybrid/Adaptive marked "N/A (Phase 7 v2)" with K-column note. Multi-Hop row highlighted. |
+| **5** Confidence Signal Breakdown | 61–65 | exp_08 signals.parquet + exp_12 agreement.jsonl (Multi-Hop) + golden_234 RAGAS (other archs) | Multi-Hop fully populated. Other archs have RAGAS but no LIME-SHAP (Phase 6 only ran on Multi-Hop) — those columns marked accordingly. |
+| **6** LIME and SHAP Explainability | 75–79 | exp_10 (LIME) + exp_11 (SHAP) + exp_12 (agreement), Stage B 205-Q retrieval-changed subset | Multi-Hop only (the same data-gap as Table 5). LIME mean top \|coef\| = 0.595, Top-1 agreement = 51.5 %, Spearman ρ = 0.632. |
+| **7** Hallucination Error-Type Taxonomy | 89–94 | exp_15 table7_counts.csv | NoRAG row = 23 context_omission (100 %) by construction. Adaptive row marked N/A (Phase 8 labelled only the 5 fixed architectures). |
+| **8** Retrieval Quality Comparison | 104–108 | golden_234 RAGAS (CP, CR) + Phase 9 synthesis (retrieval composite for rank) | MRR / nDCG@K / Duplicate-Chunk-Rate marked N/A — these weren't computed because the MCQ outputs aren't ranked-list retrieval-ground-truth. Retrieval Recall@K / Precision@K use RAGAS Context Recall / Context Precision as the closest measured equivalents. |
+| **9** Before and After RAG Comparison | 118–125 | test_1273 (Acc, Latency) + golden_234 (every RAGAS column) for all 5 fixed archs | Best-RAG-Improvement column reports the best RAG vs NoRAG delta; Faithfulness/CR/CP/HR show "(NoRAG N/A)" since NoRAG has no measurement on those dimensions. |
+| **10** Adaptive vs Best Fixed | 135–142 | Phase 9 component_scores_raw.csv | Multi-Hop = Best Fixed; Variant A in the canonical "Adaptive RAG" column. Cost per 100 Q is reported as Groq calls per 100 Q (Groq free tier → $0 monetary cost). Row 143 carries an italic footnote with Variant B's headline numbers (Acc 78.32 % · F 0.276 · HR 75.29 % · CR 0.754 · Lat 0.574 s · 242.5 calls/100Q · Final 0.4755). |
+| **11** Confidence Threshold Tuning | 152–156 | exp_09 RAGAS-only threshold sweep + exp_08 signals (avg F per τ) | All 5 thresholds {0.5 → 0.9} populated. τ=0.5 (BALANCED) and τ=0.6 (SAFETY-CRITICAL) highlighted. Average Faithfulness on the accepted set computed by filtering signals.parquet at each threshold. |
+| **12** Final Weighted Ranking | 166–171 + new 172 | Phase 9 component_scores_normalised.csv + table12_final_ranking.csv | Variant A in canonical "Adaptive RAG" row (rank 3); Variant B added as new row 172 (rank 2) to preserve the synthesis's second-best architecture. Multi-Hop row (rank 1) highlighted. |
+
+**Data-gap honesty in the workbook**: every cell that couldn't be filled from a directly-measured artefact is marked with a specific "N/A (...)" string explaining the gap (`Phase 7 v2` / `Phase 6 only ran on Multi-Hop` / `Phase 8 did not label adaptive variants` / `not measured` / `nDCG not computed`), not left blank. This makes the workbook self-documenting for the viva.
 
 ---
 

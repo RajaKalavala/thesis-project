@@ -44,3 +44,5 @@ data/cache/
 
 # But keep .gitkeep markers
 !**/.gitkeep
+
+docs/thesis-files

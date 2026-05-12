@@ -31,7 +31,9 @@
       "Bash(touch /Users/rajak/Workstation/Projects/myGitHub/thesis-project/src/confidence/__init__.py)",
       "Bash(.venv/bin/python tests/test_confidence.py)",
       "Bash(.venv/bin/python tests/test_taxonomy.py)",
-      "Bash(.venv/bin/python tests/test_synthesis.py)"
+      "Bash(.venv/bin/python tests/test_synthesis.py)",
+      "Bash(.venv/bin/python /tmp/update_excel_phase9.py)",
+      "Bash(.venv/bin/python /tmp/update_excel_all_tables.py)"
     ]
   }
 }
