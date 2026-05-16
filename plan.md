@@ -59,10 +59,9 @@ You will run **16 experiments** in 5 groups. All 16 share infrastructure: same c
                               ▼
                      12 results tables → thesis chapters
 
-  Phase 10 ─── Streamlit demo UI (OPTIONAL, parallel track)
-              Stage A scaffolding (after Phase 3)  →
-              Stage B wire-up (during Phases 4-9)  →
-              Stage C polish + deploy (after Phase 9)
+  Phase 10 ─── Streamlit demo UI ✅ BUILT (2026-05-12)
+              Three pages: Question Inspector · Pareto Explorer · Forensics
+              Cached-mode, all 7 architectures, on-disk artefacts only.
 ```
 
 ---
@@ -606,61 +605,72 @@ Rank. Map ranks → deployment recommendation:
 
 ---
 
-## 12. Phase 10 — Demo UI (**optional, parallel track**)
+## 12. Phase 10 — Demo UI ✅ BUILT (2026-05-12)
 
-> **Status:** optional. Marked here so it has a real slot, not a vague *"I'll get to it."* Build only if time permits — the thesis defends without it; with it, the central claim becomes *visible* in 5 seconds during the viva.
+> **Status:** **DONE.** The original four-tab Streamlit plan was revised on 2026-05-12 to a three-page **viva demo** — one finding per page, no dead dashboard tab — and built in one session. The app runs end-to-end (`.venv/bin/streamlit run streamlit_app.py`) and reproduces the canonical numbers from `results/exp_*/`.
 
-**Scope guardrails.** This is a **research-presentation tool**, not a clinical deployment. The proposal §6 explicitly excludes *"Real-time clinical deployment, patient-facing testing"* — the demo UI is neither. Document it in the methodology section as: *"A Streamlit demonstration application was developed to enable interactive examination of retrieval and generation behaviour across architectures. The application reads cached experiment outputs and is a research artefact, not intended for clinical use; all answers display the system's confidence score and a safety-rejection indicator."*
+**Scope guardrails.** This is a **research-presentation tool**, not a clinical deployment. The proposal §6 explicitly excludes *"Real-time clinical deployment, patient-facing testing"* — the demo UI is neither. Methodology-chapter wording: *"A Streamlit demonstration application was developed to enable interactive examination of retrieval and generation behaviour across architectures. The application reads cached experiment outputs and is a research artefact, not intended for clinical use; all answers display the system's confidence score and a safety-rejection indicator."*
 
-**Mode.** **Cached-only** — the UI reads from `results/exp_*/predictions.jsonl` and `retrieval.jsonl`, never makes a live LLM call. No Groq/OpenAI/Anthropic dependency at demo time, no demo-day failures, fully offline-capable. (Live mode — paste a new question → real Groq call — may be added at the end of the project as a stretch goal.)
+**Mode.** **Cached-only** — the UI reads from `results/exp_*/predictions.jsonl`, `retrieval.jsonl`, `ragas_scores.csv`, the Phase-8/9 parquet/CSV outputs, and `data/processed/chunks.parquet`. Never makes a live LLM call. No Groq/OpenAI/Anthropic dependency at demo time, no demo-day failures, fully offline-capable. (Live mode — paste a new question → real Groq call — was deferred as a stretch goal; see §12.6 below.)
 
 ### 12.1 Stack
 
-- **Streamlit** (Python-native, lives in the same `.venv`, runs on M1 Pro fine)
-- One file per tab in `app/` directory
-- Shared utilities in `app/utils.py` (cached-data loaders, plot helpers)
-- Deploy to **Streamlit Cloud free tier** for the viva (one-click GitHub deploy)
+- **Streamlit 1.57** (Python-native, lives in the same `.venv`, runs on M1 Pro fine)
+- **Plotly 5.24** for the Pareto plot + rejection trade-off curve
+- One file per page in `pages/` (Streamlit native multi-page); shared loaders in `app/utils/loaders.py`; theme primitives in `app/utils/theme.py`; LIME colour mapping in `app/utils/highlight.py`
+- Deploy target: **Streamlit Cloud free tier** for the viva (one-click GitHub deploy; cached-only mode means zero API keys required at deploy time)
 
-### 12.2 The four tabs
+### 12.2 The three pages (revised design)
 
-| # | Tab | Reads from | Shows |
+Each page lands one of the three publishable findings; the original four-tab plan's "Tab 4 Dashboard" was dropped because the Excel workbook already carries that role.
+
+| # | Page | Reads from | Lands the claim |
 |---|---|---|---|
-| 1 | **Architecture Battle** *(crown jewel)* | `results/exp_0[2-5]/predictions.jsonl` + `retrieval.jsonl` | Pick a MedQA question → 4 panes side-by-side (Naive / Sparse / Hybrid / Multi-Hop) → each pane: retrieved chunks (collapsible snippets), generated answer, predicted option, ground-truth match badge, RAGAS Faithfulness, latency. Optional 5th pane for Adaptive RAG once EXP_07 is done. |
-| 2 | **Explainability View** | `results/exp_10/lime.jsonl` + `results/exp_11/shap.jsonl` + `results/exp_12/agreement.parquet` | Pick any answered question + architecture → show LIME and SHAP rankings of which retrieved passages drove the answer, with the relevant text highlighted. Show LIME-SHAP top-1 / top-3 agreement. |
-| 3 | **Confidence & Safety** | `results/exp_08/confidence_features.parquet` + `results/exp_09/threshold_sweep.csv` | Slider for the rejection threshold (0.5–0.9) → live update of accept rate, accuracy, hallucination rate. Sample list of rejected questions with the signal that triggered the reject. |
-| 4 | **Results Dashboard** | All `results/exp_*/summary.json` | Interactive versions of the 12 Excel tables — filter by `complexity`, `question_type`, `requires_multihop`. Drill down into any cell to see the underlying questions. |
+| 1 | **Question Inspector** *(hero page)* | `results/exp_01..05/__golden_234/{predictions,retrieval}.jsonl` + `ragas_scores.csv` · `data/processed/{golden_ragas_300.jsonl, chunks.parquet}` · `results/exp_10_lime_passage/stage_b_*.jsonl` (best-effort join) | Pick any of 234 golden questions → 5 architecture cards (NoRAG/Naive/Sparse/Hybrid/MultiHop) side-by-side with predicted letter + ✓/✗, **RAGAS Faithfulness traffic light**, retrieval-score summary, and a **memorisation badge** when the answer is right but Faith < 0.5. Click a card → retrieved chunks with LIME-coloured passage attribution when available. *Finding: 88% of correct Naive answers are ungrounded — RAG is doing safety, not accuracy.* |
+| 2 | **Pareto Explorer** | `results/exp_16_final_synthesis/{component_scores_normalised, table12_final_ranking, sensitivity_ranks, pareto_status}.csv` | Pareto plot of accuracy_test_1273 vs Groq calls/Q (frontier = NoRAG · Adaptive_A · MultiHop) + six weight sliders + a 4-regime preset dropdown (plan_default / accuracy_heavy / safety_heavy / compute_heavy). The ranking re-computes live from the normalised component scores; a "leader swapped" banner fires when the rank-1 architecture changes vs the locked plan §11 weights. *Finding: MultiHop wins under 3 of 4 regimes; the proposal's "Adaptive should be best balanced" expectation is falsified.* |
+| 3 | **Hallucination Forensics** | `results/exp_08_confidence_signals/exp_05_multi_hop_rag__golden_234__signals.parquet` · `results/exp_09_confidence_rejection/exp_05_multi_hop_rag__golden_234__threshold_sweeps.csv` · `results/exp_14_taxonomy_labels/stage_c_*_wrong.jsonl` · `results/exp_15_taxonomy_analysis/table7_proportions.csv` | τ slider (0.30 → 0.90) + 4-config selector (`combined / RAGAS_only / faithfulness_only / retrieval_only`) drives live `accept_rate · accuracy_on_accepted · recall_of_wrong_rejected` metrics. Per-question table with verdict (ACCEPTED / REJECTED) recomputed via `src.confidence.signals.combine_signals` so the math matches EXP_09 exactly. Drill-down on any row shows retrieved chunks + LIME highlight + hallucination taxonomy category & rationale. Footer: 5-arch stacked-bar taxonomy from Table 7. *Finding: Multi-Hop + τ=0.5 combined → 0.967 accuracy on 121 accepted (+6.5pp uplift).* |
 
-### 12.3 Three-stage build
+### 12.3 Build outcome (2026-05-12 one-session sprint)
 
-| Stage | When | Effort | Deliverable | Acceptance |
-|---|---|---|---|---|
-| **A — Scaffolding** | After Phase 3 (golden dataset done), before Phase 4 baseline runs | ~2 days | Empty Streamlit app at `app/main.py` with all 4 tabs. **Hardcoded placeholder data** in `app/_mock_data.py` (built from the legacy 65-row golden as a stand-in). The output schema for `results/exp_*/summary.json` is **frozen** during this stage — see Stage A acceptance below. | The app runs (`streamlit run app/main.py`) and displays mock content in all 4 tabs without errors. The output-schema spec is documented in `docs/results_schema.md`. **Critically: this freezes `summary.json` shape *before* you spend 30+ hours of Groq running experiments.** |
-| **B — Incremental wire-up** | Continuous, parallel to Phases 4–9 | ~0 extra days | As each experiment writes to `results/exp_XX/`, swap the corresponding mock loader in `app/utils.py` for the real loader. No per-experiment UI work if Stage A's schema is right. | The app's tab N stops showing mock data and shows the real experiment's data after that experiment completes. |
-| **C — Polish & demo prep** | After Phase 9 (all experiments done), before thesis writing crunch | ~3 days | Styling pass (consistent fonts, colour palette, no dev-mode warnings); screenshots for the thesis report (PNG export); deploy to Streamlit Cloud; record a 3-minute demo screencast. | Public Streamlit Cloud URL works on a phone browser; ≥6 screenshots embedded into the thesis results chapter; screencast saved to `docs/demo.mp4` (or linked from a static host). |
+Built in roughly 4 hours of focused work — well inside the 6-day plan A+B+C estimate — because the schema-lock discipline from earlier phases paid off: the loaders are thin wrappers around existing on-disk artefacts. **All AppTest renders passed; the compute_heavy regime correctly swaps the rank-1 to Naive (final_score 0.4817); τ=0.5 combined reproduces 96.7% accuracy / 51.7% accept rate / 82.6% wrong-Q rejected.**
 
-### 12.4 Repository additions
+Remaining polish work (Stage C-equivalent, not yet done):
+
+- [ ] Capture ≥6 screenshots for the thesis results chapter
+- [ ] Deploy to Streamlit Cloud free tier
+- [ ] Record a 3-minute demo screencast (`docs/demo.mp4`)
+
+### 12.4 Repository additions (as built)
 
 ```
 thesis-project/
-├── app/                                ← NEW (only if Phase 10 is taken on)
-│   ├── main.py                         (Streamlit entry point with tab router)
-│   ├── tabs/
-│   │   ├── battle.py                   (Tab 1 — Architecture Battle)
-│   │   ├── explainability.py           (Tab 2 — LIME / SHAP view)
-│   │   ├── confidence.py               (Tab 3 — Threshold slider)
-│   │   └── dashboard.py                (Tab 4 — Results tables)
-│   ├── utils.py                        (cached-data loaders, plot helpers)
-│   ├── _mock_data.py                   (Stage A placeholder, deleted after Stage B)
-│   └── assets/
-│       └── style.css                   (optional Stage C polish)
-├── docs/
-│   └── results_schema.md               ← NEW (locks summary.json shape)
-└── streamlit_app.py                    ← NEW (Streamlit Cloud entry point, imports app/main.py)
+├── streamlit_app.py                    Streamlit Cloud entry point + landing page
+├── pages/
+│   ├── 1_Question_Inspector.py
+│   ├── 2_Pareto_Explorer.py
+│   └── 3_Hallucination_Forensics.py
+└── app/
+    ├── __init__.py
+    ├── utils/
+    │   ├── loaders.py                  @st.cache_data wrappers for every artefact
+    │   ├── theme.py                    palette, badges, traffic-light helpers
+    │   └── highlight.py                LIME coef → rgba colour mapping
+    └── curated/
+        └── inspector_picks.json        5 hand-curated "juicy" questions for the
+                                        "Surprise me" button (memorisation cases +
+                                        MultiHop-only wins + grounded contrasts)
 ```
+
+`requirements.txt` gained `streamlit>=1.36,<2.0` + `plotly>=5.20,<6.0`. No other dependencies needed — every loader reuses what Phases 1–9 already shipped.
 
 ### 12.5 Hardware impact
 
-Negligible. Streamlit runs on M1 Pro CPU only — no GPU, no embedding model in memory at demo time. Memory footprint at runtime is ~300–500 MB. Streamlit Cloud free tier is plenty for a viva demo (no concurrent-user pressure).
+Negligible. Streamlit runs on M1 Pro CPU only — no GPU, no embedding model in memory at demo time. Memory footprint at runtime is ~300–500 MB (dominated by the 67k-row `chunks.parquet` lookup table for retrieved-passage rendering). Streamlit Cloud free tier is plenty for a viva demo (no concurrent-user pressure).
+
+### 12.6 Deferred / future work
+
+- **Live Groq mode** (Option D from the 2026-05-12 design conversation) — paste a clinical question, real Groq call goes through Multi-Hop, full retrieval + sub-query generation + confidence scoring + rejection check. Risk: demo-day Groq failure. If added, ship a cached fallback that triggers on rate-limit / 5xx so the viva audience never sees the failure.
+- **Adaptive variants on Page 1** — Adaptive_A / Adaptive_B did not run on `golden_234` (only `test_1273`), so the Question Inspector currently shows 5 archs not 7. Adaptive is fully present on Page 2 (Pareto + sensitivity). A future iteration could either re-run the two Adaptive variants on `golden_234` (~$22 RAGAS, ~30 min Groq) or text-match-join the 18 golden∩test_1273 questions to surface Adaptive cards for that subset.
 
 ---
 
@@ -681,7 +691,7 @@ Negligible. Streamlit runs on M1 Pro CPU only — no GPU, no embedding model in 
 | 11 | Confidence Threshold Tuning | EXP_08–EXP_09 | `07_exp09` |
 | 12 | Final Weighted Ranking | EXP_16 | `09_exp16` |
 
-If every experiment writes its `summary.json` with **exactly the column names from the Excel workbook**, populating the workbook is a paste step at the end. The same `summary.json` schema also feeds the demo UI's Tab 4 (§12.2) — locking the schema in Stage A of Phase 10 saves rework.
+If every experiment writes its `summary.json` with **exactly the column names from the Excel workbook**, populating the workbook is a paste step at the end. The schema-lock from [docs/results_schema.md](docs/results_schema.md) (done early in Phase 4) is also what let Phase 10 (§12) be built in one session — the demo's loaders read the on-disk artefacts directly with no rework.
 
 ---
 
@@ -699,8 +709,8 @@ If every experiment writes its `summary.json` with **exactly the column names fr
 | Phase 7 (confidence) | <1 h compute (re-uses prior outputs) | $0 |
 | Phase 8 (taxonomy) | 3 h human + 30 min compute | ~$3 GPT-4o-mini if classifier-assisted |
 | Phase 9 (synthesis) | 30 min | $0 |
-| **Phase 10 (demo UI, optional)** | ~5 days human time, spread A/B/C | $0 (Streamlit Cloud free tier) |
-| **Total** | **~3–4 weeks elapsed (+ ~5 days if Phase 10 taken)** | **~$60 reconciled 2026-05-10** (Phase 3 $6.61 + Phase 4 RAGAS ~$50 measured + Phase 8 taxonomy ~$3 pending). Comfortably under any MSc thesis budget; the 2026-05-06 over-correction to $140–160 has been retired. |
+| **Phase 10 (demo UI) ✅ BUILT 2026-05-12** | ~4 h one-session build (vs. the 5-day estimate; schema-lock paid off) | $0 (cached-only; Streamlit Cloud free tier sufficient) |
+| **Total** | **~3–4 weeks elapsed (Phase 10 inclusive)** | **~$60 reconciled 2026-05-10** (Phase 3 $6.61 + Phase 4 RAGAS ~$50 measured + Phase 8 taxonomy ~$3). Phase 10 added $0. Comfortably under any MSc thesis budget. |
 
 The dominant cost is **wall-clock**, not money — Phase 4 RAGAS is the one paid item that meaningfully affects the budget. Disk-cache every Groq + Claude + GPT-4o response by `(experiment_id, question_id, prompt_hash)` so resuming after a rate-limit pause is free, and use file-level `ragas_scores.csv` resumability so a failed Claude run can pick up where it stopped without re-spending.
 
@@ -721,8 +731,8 @@ The dominant cost is **wall-clock**, not money — Phase 4 RAGAS is the one paid
 | Manual hallucination labels are subjective | Medium | Have a second annotator label 30 cases; report inter-annotator agreement (Cohen's κ). |
 | Dataset contamination — LLaMA already saw MedQA in pretraining | Medium-High | Compare EXP_01 No-RAG accuracy vs EXP_02 Naive RAG; if No-RAG is already > 75%, hallucination is the more interesting story than accuracy. |
 | Index disagrees between sessions (different embedding model versions) | Low | Pin `sentence-transformers==3.0.x` and BGE model revision in requirements.txt. |
-| **(Phase 10) Demo UI schema drift** — `summary.json` shape changes mid-project, breaks the UI | Medium | Lock the schema in Stage A; document in `docs/results_schema.md`; CI-style assert in `src/eval/runner.py` that every produced `summary.json` matches the schema. |
-| **(Phase 10) UI consumes time better spent on experiments** | Medium-High | Phase 10 is **optional**. If at the end of Phase 9 the experiment results are weak or incomplete, drop the UI entirely and write up the thesis without it. |
+| **(Phase 10) Demo UI schema drift** — `summary.json` shape changes mid-project, breaks the UI | Closed 2026-05-12 | Resolved — schema-lock in [docs/results_schema.md](docs/results_schema.md) held through Phases 4–9; the demo's `app/utils/loaders.py` reads the on-disk artefacts directly with no rework. |
+| **(Phase 10) UI consumes time better spent on experiments** | Closed 2026-05-12 | Resolved — Phase 10 was deferred until after Phase 9 was complete, then built in ~4 h. Zero experiment time displaced. |
 | **(Phase 4 close-out 2026-05-10) Hybrid RRF underperforms its hypothesis** — CP=0.280 (< 0.50 threshold and < Naive's 0.329) | Resolved as a finding | Documented as a publishable counter-result in [`docs/output_notes/04d_exp04_output.md` §4](docs/output_notes/04d_exp04_output.md): RRF requires both retrievers to clear a precision floor; sparse's CP=0.081 contaminates the fused union. Phase 5 EXP_07 routing-table design should test a binary No-RAG/Multi-Hop split before assuming Naive/Hybrid/Multi-Hop. |
 | **(Phase 4 close-out 2026-05-10) Naive/Sparse/Hybrid all underperform No-RAG by 0.8–1.7 pp on test_1273** | Resolved as central thesis finding | The contamination story (LLaMA pretrained on MedQA → 0.7738 No-RAG ceiling) plus single-shot retrieval's failure to ground the LLM (88 % of correct answers ungrounded on Naive) is the discussion-chapter anchor. Multi-Hop is the architecture that breaks the pattern (Acuuracy 0.7958, +2.20 pp; F=0.283). |
 | **(Phase 5 close-out 2026-05-11) Adaptive routing does not beat Multi-Hop on raw accuracy** | Reframed: routing wins on cost-adjusted Pareto frontier | EXP_07 Variant A acc=0.7863 vs Multi-Hop 0.7958 (−0.94 pp), but at 1.806 vs 3.0 Groq calls/Q. Variant A captures 84 % of Multi-Hop's gain over No-RAG at 60 % of the compute. The honest framing is the Pareto frontier (No-RAG → Variant A → Multi-Hop); on that axis, Variant A is the cost-efficient deployment-realistic point. Avoids the proposal's premise that routing would beat fixed architectures on accuracy (which the data did not support). |
@@ -737,10 +747,10 @@ You're at the end of Phase 1. Phase 2 unblocks everything else.
 1. **Now → next session:** build Notebook 01 (chunking) and Notebook 02 (BGE-large embeddings + ChromaDB + BM25). 1 day of work end-to-end including the smoke test in Notebook 03.
 2. **Following session:** build the `src/` skeleton modules (`retrieval/`, `generation/`, `eval/runner.py`).
 3. **Then:** Notebook 04 — golden RAGAS dataset construction (✅ DONE 2026-05-04). 234 accepted out of 300 attempted. `gpt-4o` via OpenAI API, $6.61 total. Canonical deliverable at `data/processed/golden_ragas_300.jsonl`.
-4. **(Optional) Right after Phase 3:** Phase 10 Stage A — Streamlit scaffolding with mock data. **The key reason to do Stage A here**: it forces you to lock `summary.json` shape before any expensive experiment runs, saving rework later.
-5. **Then:** Phase 4 — run EXP_01 → EXP_05 sequentially. Tables 1, 8, 9 fill from these. (UI Stage B wires up incrementally as outputs arrive.)
+4. **(Schema-lock step, completed early)** `docs/results_schema.md` froze the `summary.json` shape before Phase 4 ran, which is what later allowed Phase 10 to be built in one session from the artefacts as-is.
+5. **Then:** Phase 4 — run EXP_01 → EXP_05 sequentially. Tables 1, 8, 9 fill from these.
 6. **Then:** Phase 5 → 6 → 7 → 8 → 9 in order. Each one consumes outputs of the prior.
-7. **(Optional) After Phase 9:** Phase 10 Stage C — UI polish, screenshots, Streamlit Cloud deploy.
+7. **(Done 2026-05-12) Phase 10** — three-page Streamlit viva demo built in one session. Stage C polish (Streamlit Cloud deploy + 6 thesis screenshots + 3-min screencast) is the remaining work — see `docs/todo.md §10.5`.
 8. **Final:** thesis writing — methodology + results + discussion chapters. Most of the methodology lifts directly from this `plan.md`, the dataset README, and the Excel workbook.
 
 If anything in the locked decisions (§0) blocks progress, surface it before sinking time into a long Groq run — the cost of pausing and re-deciding is one hour; the cost of running 30 hours on a wrong setting is 30 hours.

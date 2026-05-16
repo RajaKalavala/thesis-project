@@ -52,3 +52,7 @@ scikit-learn>=1.4
 # --- NLP helpers ------------------------------------------------------------
 nltk>=3.9
 tiktoken>=0.7
+
+# --- Phase 10 Streamlit demo UI --------------------------------------------
+streamlit>=1.36,<2.0               # three-page viva demo (cached-mode only)
+plotly>=5.20,<6.0                  # Pareto plot + threshold trade-off curve

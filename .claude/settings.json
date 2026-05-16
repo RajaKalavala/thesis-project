@@ -39,7 +39,24 @@
       "Bash(tee /tmp/cross_arch.log)",
       "Bash(.venv/bin/python /tmp/update_excel_table6.py)",
       "Bash(.venv/bin/python /tmp/rerun_synthesis.py)",
-      "Bash(.venv/bin/python /tmp/update_excel_tables_10_12.py)"
+      "Bash(.venv/bin/python /tmp/update_excel_tables_10_12.py)",
+      "Bash(python3 -c \"import sys,json; [print\\(json.dumps\\(json.loads\\(l\\), indent=2\\)[:1500]\\) for l in sys.stdin]\")",
+      "Bash(python3 -c \"import sys,json; [print\\(json.dumps\\(json.loads\\(l\\), indent=2\\)[:2500]\\) for l in sys.stdin]\")",
+      "Bash(python3 -c \"import sys,json; [print\\(json.dumps\\(json.loads\\(l\\), indent=2\\)\\) for l in sys.stdin]\")",
+      "Bash(.venv/bin/pip show *)",
+      "Bash(mkdir -p app/utils app/pages app/curated && ls app/)",
+      "Bash(.venv/bin/streamlit run *)",
+      "Bash(curl -s -o /dev/null -w \"home_http=%{http_code}\\\\n\" http://localhost:8765/)",
+      "Bash(curl -s -o /tmp/home.html -w \"home_bytes=%{size_download}\\\\n\" http://localhost:8765/)",
+      "Bash(curl -s -o /tmp/p1.html -w \"p1_bytes=%{size_download}\\\\n\" \"http://localhost:8765/Question_Inspector\")",
+      "Bash(curl -s -o /tmp/p2.html -w \"p2_bytes=%{size_download}\\\\n\" \"http://localhost:8765/Pareto_Explorer\")",
+      "Bash(curl -s -o /tmp/p3.html -w \"p3_bytes=%{size_download}\\\\n\" \"http://localhost:8765/Hallucination_Forensics\")",
+      "Bash(.venv/bin/python -m py_compile streamlit_app.py pages/1_Question_Inspector.py pages/2_Pareto_Explorer.py pages/3_Hallucination_Forensics.py app/utils/loaders.py app/utils/theme.py app/utils/highlight.py)",
+      "Bash(curl -sf -o /dev/null -w \"server=%{http_code}\\\\n\" http://localhost:8765/)",
+      "Bash(xargs -r kill)"
+    ],
+    "additionalDirectories": [
+      "/Users/rajak/Workstation/Projects/myGitHub/thesis-project/app"
     ]
   }
 }

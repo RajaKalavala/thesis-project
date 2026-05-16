@@ -1,0 +1,22 @@
+[
+  {
+    "question_id": "golden_001",
+    "why": "Naive answers correctly with Faith<0.3 \u2014 memorisation; Multi-Hop grounds the same answer"
+  },
+  {
+    "question_id": "golden_055",
+    "why": "Only Multi-Hop solves this \u2014 Naive/Sparse/Hybrid all wrong"
+  },
+  {
+    "question_id": "golden_060",
+    "why": "NoRAG answers from pre-training; RAG architectures are distracted by retrieval"
+  },
+  {
+    "question_id": "golden_007",
+    "why": "Architectures split \u2014 classic disagreement case for confidence-aware rejection"
+  },
+  {
+    "question_id": "golden_010",
+    "why": "Multi-Hop is highly grounded (Faith>0.6); Naive answers right but ungrounded"
+  }
+]
